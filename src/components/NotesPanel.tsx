@@ -2,17 +2,19 @@
 
 import { useState } from 'react';
 import { useSession } from './SessionProvider';
+import { useUniqueId } from '@/hooks/useUniqueId';
 
 export function NotesPanel() {
   const { state, dispatch, elapsedMs } = useSession();
   const [text, setText] = useState('');
+  const newId = useUniqueId('note');
 
   const handleAddNote = () => {
     if (!text.trim()) return;
     dispatch({
       type: 'ADD_NOTE',
       note: {
-        id: `note-${Date.now()}`,
+        id: newId(),
         timestamp_ms: elapsedMs,
         text: text.trim(),
         author: state.hostName,

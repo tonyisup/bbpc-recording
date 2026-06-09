@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSession } from './SessionProvider';
+import { useUniqueId } from '@/hooks/useUniqueId';
 import type { EditCue } from '@/types';
 
 const CUE_TYPES: EditCue['type'][] = ['doxx-bleep', 'network-drop', 'dmca-music', 'spoiler', 'other'];
@@ -19,10 +20,11 @@ export function EditCuePanel() {
   const [activeType, setActiveType] = useState<EditCue['type']>('doxx-bleep');
   const [reason, setReason] = useState('');
   const [activeCueId, setActiveCueId] = useState<string | null>(null);
+  const newId = useUniqueId('edit');
 
   const handleStartCue = () => {
-    if (activeCueId) return; // already active
-    const id = `edit-${Date.now()}`;
+    if (activeCueId) return;
+    const id = newId();
     setActiveCueId(id);
     dispatch({
       type: 'ADD_EDIT_CUE',

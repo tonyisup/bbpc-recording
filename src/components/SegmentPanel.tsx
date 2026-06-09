@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSession } from './SessionProvider';
+import { useUniqueId } from '@/hooks/useUniqueId';
 
 const SEGMENT_TYPES = [
   { value: 'intro', label: 'Intro' },
@@ -17,10 +18,11 @@ export function SegmentPanel() {
   const [label, setLabel] = useState('');
   const [segType, setSegType] = useState<string>('segment');
   const [activeSegId, setActiveSegId] = useState<string | null>(null);
+  const newId = useUniqueId('seg');
 
   const handleStartSegment = () => {
     if (activeSegId) return;
-    const id = `seg-${Date.now()}`;
+    const id = newId();
     setActiveSegId(id);
     dispatch({
       type: 'START_SEGMENT',

@@ -80,43 +80,51 @@ export interface PusherSounderEvent {
   sounder: Sounder;
   played_at_ms: number;
   played_by: string;
+  from?: string;
 }
 
 export interface PusherNoteEvent {
   kind: 'note';
   note: SessionNote;
+  from?: string;
 }
 
 export interface PusherNoteDeleteEvent {
   kind: 'note-delete';
   id: string;
+  from?: string;
 }
 
 export interface PusherSegmentStartEvent {
   kind: 'segment-start';
   segment: Segment;
+  from?: string;
 }
 
 export interface PusherSegmentEndEvent {
   kind: 'segment-end';
   id: string;
   end_ms: number;
+  from?: string;
 }
 
 export interface PusherEditCueEvent {
   kind: 'edit-cue';
   cue: EditCue;
+  from?: string;
 }
 
 export interface PusherEditCueUpdateEvent {
   kind: 'edit-cue-update';
   id: string;
   end_ms: number;
+  from?: string;
 }
 
 export interface PusherEditCueDeleteEvent {
   kind: 'edit-cue-delete';
   id: string;
+  from?: string;
 }
 
 export type PusherSessionEvent =

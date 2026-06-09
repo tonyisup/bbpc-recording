@@ -88,26 +88,27 @@ function actionToPusherEvent(
   action: SessionAction,
   hostName: string,
   recordingStart: number | null,
+  sessionId: string,
 ): PusherSessionEvent | null {
   switch (action.type) {
     case 'TRIGGER_SOUNDER': {
       const playedAt = recordingStart != null ? Date.now() - recordingStart : 0;
-      return { kind: 'sounder', sounder: action.sounder, played_at_ms: playedAt, played_by: hostName };
+      return { kind: 'sounder', sounder: action.sounder, played_at_ms: playedAt, played_by: hostName, from: sessionId };
     }
     case 'ADD_NOTE':
-      return { kind: 'note', note: action.note };
+      return { kind: 'note', note: action.note, from: sessionId };
     case 'DELETE_NOTE':
-      return { kind: 'note-delete', id: action.id };
+      return { kind: 'note-delete', id: action.id, from: sessionId };
     case 'START_SEGMENT':
-      return { kind: 'segment-start', segment: action.segment };
+      return { kind: 'segment-start', segment: action.segment, from: sessionId };
     case 'END_SEGMENT':
-      return { kind: 'segment-end', id: action.id, end_ms: action.end_ms };
+      return { kind: 'segment-end', id: action.id, end_ms: action.end_ms, from: sessionId };
     case 'ADD_EDIT_CUE':
-      return { kind: 'edit-cue', cue: action.cue };
+      return { kind: 'edit-cue', cue: action.cue, from: sessionId };
     case 'UPDATE_EDIT_CUE':
-      return { kind: 'edit-cue-update', id: action.id, end_ms: action.end_ms };
+      return { kind: 'edit-cue-update', id: action.id, end_ms: action.end_ms, from: sessionId };
     case 'DELETE_EDIT_CUE':
-      return { kind: 'edit-cue-delete', id: action.id };
+      return { kind: 'edit-cue-delete', id: action.id, from: sessionId };
     default:
       return null;
   }
@@ -198,7 +199,12 @@ export function SessionProvider({
   // Pusher sync
   const channel = channelName ?? episode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
+  // Unique session ID to filter out self-echoed events
+  const sessionIdRef = useRef(`sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+
   const handleRemoteEvent = useCallback((event: PusherSessionEvent) => {
+    // Skip events that originated from this session (Pusher echoes back)
+    if (event.from === sessionIdRef.current) return;
     rawDispatch(pusherEventToAction(event));
   }, []);
 
@@ -211,7 +217,7 @@ export function SessionProvider({
   // Wrapped dispatch: local + broadcast
   const dispatch = useCallback((action: SessionAction) => {
     rawDispatch(action);
-    const event = actionToPusherEvent(action, state.hostName, state.recordingStart);
+    const event = actionToPusherEvent(action, state.hostName, state.recordingStart, sessionIdRef.current);
     if (event) sendEvent(event);
   }, [rawDispatch, sendEvent, state.hostName, state.recordingStart]);
 
