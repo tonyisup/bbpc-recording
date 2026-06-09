@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useSession } from './SessionProvider';
-import type { Sounder } from '@/types';
+import { SounderPad } from './SounderPad';
 
 interface SounderFromApi {
   id: string;
@@ -10,19 +10,17 @@ interface SounderFromApi {
   category: string;
   url: string;
   duration: number;
-  size: number;
-  contentType: string;
 }
 
 export function SounderBoard() {
-  const { state, dispatch, elapsedMs } = useSession();
+  const { dispatch } = useSession();
   const [apiSounders, setApiSounders] = useState<SounderFromApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  // Fetch sounders from Azure on mount
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -44,49 +42,53 @@ export function SounderBoard() {
     return () => { cancelled = true; };
   }, []);
 
-  // Group by category
+  // Extract unique categories
   const categories = useMemo(() => {
-    const map = new Map<string, SounderFromApi[]>();
+    const cats = new Map<string, number>();
     for (const s of apiSounders) {
+      cats.set(s.category, (cats.get(s.category) || 0) + 1);
+    }
+    return Array.from(cats.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [apiSounders]);
+
+  // Filter sounders by search + category
+  const filteredSounders = useMemo(() => {
+    let result = apiSounders;
+    if (activeCategory) {
+      result = result.filter(s => s.category === activeCategory);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter(s =>
+        s.name.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [apiSounders, search, activeCategory]);
+
+  // Group filtered sounders by category for display
+  const grouped = useMemo(() => {
+    const map = new Map<string, SounderFromApi[]>();
+    for (const s of filteredSounders) {
       const list = map.get(s.category) ?? [];
       list.push(s);
       map.set(s.category, list);
     }
     return map;
-  }, [apiSounders]);
+  }, [filteredSounders]);
 
   const handleTrigger = useCallback((sounder: SounderFromApi) => {
-    if (!sounder.url) {
-      console.error('[Sounder] No URL for:', sounder.name);
-      return;
-    }
-
-    // Stop any currently playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-
-    // Play the audio
     const audio = new Audio();
-    audio.crossOrigin = 'anonymous';
     audio.preload = 'auto';
     audio.src = sounder.url;
-    audioRef.current = audio;
     setPlayingId(sounder.id);
-
-    audio.play().catch(err => {
-      console.error('[Sounder] Playback error:', err);
+    audio.play().catch(() => {
       setPlayingId(null);
-      audioRef.current = null;
     });
-
     audio.addEventListener('ended', () => {
       setPlayingId(null);
-      audioRef.current = null;
     });
-
-    // Dispatch to session state
     dispatch({
       type: 'TRIGGER_SOUNDER',
       sounder: {
@@ -116,59 +118,71 @@ export function SounderBoard() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 overflow-y-auto h-full">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">
-        Sounders
-        <span className="ml-2 text-[var(--accent)] font-normal normal-case">
-          ({apiSounders.length} sounds)
-        </span>
-      </h2>
-
-      {Array.from(categories.entries()).map(([category, sounders]) => (
-        <div key={category}>
-          <h3 className="text-xs font-medium text-[var(--muted)] mb-2">
-            {category} ({sounders.length})
-          </h3>
-          <div className="grid grid-cols-2 gap-1.5">
-            {sounders.map(s => (
-              <button
-                key={s.id}
-                onClick={() => handleTrigger(s)}
-                className={`
-                  relative px-2.5 py-2 text-xs font-medium rounded-lg border transition-all text-left
-                  ${playingId === s.id
-                    ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-white'
-                    : 'border-[var(--card-border)] bg-[var(--card-bg)] hover:border-[var(--accent)]/50 hover:bg-[var(--card-bg)]/80'}
-                `}
-              >
-                <span className="block truncate leading-tight">{s.name}</span>
-                <span className="block text-[10px] text-[var(--muted)] mt-0.5">
-                  {(s.duration / 1000).toFixed(1)}s
-                </span>
-              </button>
-            ))}
-          </div>
+    <div className="flex flex-col h-full">
+      {/* Search + filter bar */}
+      <div className="flex flex-col gap-2 p-3 border-b border-[var(--card-border)]">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search sounders..."
+          className="w-full px-3 py-1.5 text-sm rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+        />
+        {/* Category pills */}
+        <div className="flex flex-wrap gap-1">
+          <button
+            onClick={() => setActiveCategory(null)}
+            className={`px-2 py-0.5 text-[10px] font-medium rounded-full border transition-all ${
+              !activeCategory
+                ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-white'
+                : 'border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--muted)]'
+            }`}
+          >
+            All ({apiSounders.length})
+          </button>
+          {categories.map(([cat, count]) => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
+              className={`px-2 py-0.5 text-[10px] font-medium rounded-full border transition-all ${
+                activeCategory === cat
+                  ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-white'
+                  : 'border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--muted)]'
+              }`}
+            >
+              {cat} ({count})
+            </button>
+          ))}
         </div>
-      ))}
+      </div>
 
-      {state.soundersUsed.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
-          <h3 className="text-xs font-medium text-[var(--muted)] mb-2">
-            History ({state.soundersUsed.length})
-          </h3>
-          <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
-            {state.soundersUsed.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                <span className="font-mono tabular-nums w-16">
-                  {(s.played_at_ms / 1000).toFixed(1)}s
-                </span>
-                <span className="truncate">{s.name}</span>
-                <span className="ml-auto text-[var(--muted)]/60">{s.played_by}</span>
-              </div>
-            ))}
+      {/* Sounder grid */}
+      <div className="flex-1 overflow-y-auto p-3">
+        {filteredSounders.length === 0 && (
+          <div className="text-center py-8 text-sm text-[var(--muted)]">
+            No sounders match "{search}"
           </div>
-        </div>
-      )}
+        )}
+
+        {Array.from(grouped.entries()).map(([category, sounders]) => (
+          <div key={category} className="mb-4">
+            <h3 className="text-xs font-medium text-[var(--muted)] mb-2">
+              {category} ({sounders.length})
+            </h3>
+            <div className="grid grid-cols-3 gap-1.5">
+              {sounders.map(s => (
+                <SounderPad
+                  key={s.id}
+                  sounder={s}
+                  playing={playingId === s.id}
+                  onTrigger={handleTrigger}
+                  draggable
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

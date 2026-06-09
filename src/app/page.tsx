@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { SessionProvider } from '@/components/SessionProvider';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { SounderBoard } from '@/components/SounderBoard';
+import { FavoritesSidebar } from '@/components/FavoritesSidebar';
 import { NotesPanel } from '@/components/NotesPanel';
 import { EditCuePanel } from '@/components/EditCuePanel';
 import { SegmentPanel } from '@/components/SegmentPanel';
@@ -28,9 +29,9 @@ function DashboardContent() {
       <DashboardHeader />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar: Sounder board (always visible) */}
-        <aside className="w-72 shrink-0 border-r border-[var(--card-border)] overflow-hidden flex flex-col lg:block hidden">
-          <SounderBoard />
+        {/* Left sidebar: Favorites (always visible on desktop) */}
+        <aside className="w-56 shrink-0 border-r border-[var(--card-border)] overflow-hidden hidden lg:flex flex-col bg-[var(--card-bg)]">
+          <FavoritesSidebar />
         </aside>
 
         {/* Main content area */}
@@ -54,16 +55,7 @@ function DashboardContent() {
 
           {/* Tab content */}
           <div className="flex-1 overflow-hidden">
-            {activeTab === 'sounders' && (
-              <div className="h-full overflow-y-auto lg:hidden">
-                <SounderBoard />
-              </div>
-            )}
-            {activeTab === 'sounders' && (
-              <div className="hidden lg:flex h-full items-center justify-center text-[var(--muted)] text-sm">
-                Sounder board is shown in the left sidebar on desktop.
-              </div>
-            )}
+            {activeTab === 'sounders' && <SounderBoard />}
             {activeTab === 'notes' && <NotesPanel />}
             {activeTab === 'edit' && <EditCuePanel />}
             {activeTab === 'segments' && <SegmentPanel />}
