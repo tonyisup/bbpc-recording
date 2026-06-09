@@ -79,7 +79,7 @@ function DashboardContent() {
 
 export default function Home() {
   return (
-    <SessionProvider episode="EP-2026-06-09" hostName="tony">
+    <SessionProvider episode="EP-2026-06-09" hostName="tony" channelName="ep-2026-06-09">
       <DashboardContent />
     </SessionProvider>
   );
