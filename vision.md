@@ -26,7 +26,7 @@ Every recording produces a `session-manifest.json` — structured data that:
 {
   "episode": "EP-2024-12",
   "date": "2024-12-01",
-  "hosts": ["tony", "alice", "bob"],
+  "hosts": ["tony", "fonso", "harley"],
   "recording_start": 0,
   "recording_end": 7200000,
   "manifest_version": "1.0",
