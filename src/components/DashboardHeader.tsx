@@ -1,6 +1,7 @@
 'use client';
 
 import { useSession } from './SessionProvider';
+import { useAudio } from './AudioProvider';
 
 function formatElapsed(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -12,13 +13,22 @@ function formatElapsed(ms: number): string {
 
 export function DashboardHeader() {
   const { state, elapsedMs, dispatch } = useSession();
+  const { stopAll } = useAudio();
 
   return (
     <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-semibold tracking-tight">{state.episode}</h1>
         <span className="text-xs text-[var(--muted)]">{state.date}</span>
-      </div>
+      
+
+        <button
+          onClick={stopAll}
+          className="px-2 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--danger)] hover:border-[var(--danger)] transition-colors"
+          title="Stop all playing sounders"
+        >
+          ⏹
+        </button></div>
 
       <div className="flex items-center gap-3">
         <span className="text-sm text-[var(--muted)]">{state.hostName}</span>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { SessionProvider } from '@/components/SessionProvider';
+import { AudioProvider } from '@/components/AudioProvider';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { SounderBoard } from '@/components/SounderBoard';
 import { FavoritesSidebar } from '@/components/FavoritesSidebar';
@@ -72,7 +73,9 @@ function DashboardContent() {
 export default function Home() {
   return (
     <SessionProvider episode="EP-2026-06-09" hostName="tony" channelName="ep-2026-06-09">
-      <DashboardContent />
+      <AudioProvider>
+        <DashboardContent />
+      </AudioProvider>
     </SessionProvider>
   );
 }

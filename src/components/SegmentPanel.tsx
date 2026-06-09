@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from './SessionProvider';
+import { useAudio } from './AudioProvider';
 import { useUniqueId } from '@/hooks/useUniqueId';
 
 interface SegmentTemplate {
@@ -29,6 +30,7 @@ export function SegmentPanel() {
   const [templates, setTemplates] = useState<SegmentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const newId = useUniqueId('seg');
+  const { play } = useAudio();
 
   // Load templates from Azure config
   useEffect(() => {
@@ -47,23 +49,14 @@ export function SegmentPanel() {
     return () => { cancelled = true; };
   }, []);
 
-  // Play a sounder by blob path
-  const playSounder = useCallback((blobPath: string) => {
-    const url = `/api/sounders/play?path=${encodeURIComponent(blobPath)}`;
-    const audio = new Audio();
-    audio.preload = 'auto';
-    audio.src = url;
-    audio.play().catch(() => {});
-  }, []);
-
   // Apply a template: fill form + play intro sounder
   const handleTemplateClick = useCallback((tpl: SegmentTemplate) => {
     setLabel(tpl.label);
     setSegType(tpl.type);
     if (tpl.introSounder) {
-      playSounder(tpl.introSounder);
+      play(`/api/sounders/play?path=${encodeURIComponent(tpl.introSounder)}`);
     }
-  }, [playSounder]);
+  }, [play]);
 
   const handleStartSegment = () => {
     if (activeSegId) return;

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSession } from './SessionProvider';
+import { useAudio } from './AudioProvider';
 import type { Sounder as SounderItem } from '@/types';
 
 const STORAGE_KEY = 'bbpc-sounders-favorites';
@@ -21,6 +22,7 @@ function saveFavorites(favs: SounderItem[]) {
 
 export function FavoritesSidebar() {
   const { dispatch } = useSession();
+  const { play } = useAudio();
   const [favorites, setFavorites] = useState<SounderItem[]>(loadFavorites);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -29,7 +31,6 @@ export function FavoritesSidebar() {
   const [dropIdx, setDropIdx] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Persist on change
@@ -46,19 +47,11 @@ export function FavoritesSidebar() {
   // --- Play ---
   const handleTrigger = useCallback((s: SounderItem) => {
     if (editMode) return;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    const audio = new Audio();
-    audio.preload = 'auto';
-    audio.src = s.url;
-    audioRef.current = audio;
     setPlayingId(s.id);
-    audio.play().catch(() => { setPlayingId(null); audioRef.current = null; });
-    audio.addEventListener('ended', () => { setPlayingId(null); audioRef.current = null; });
+    const audio = play(s.url);
+    audio.addEventListener('ended', () => { setPlayingId(null); });
     dispatch({ type: 'TRIGGER_SOUNDER', sounder: { id: s.id, name: s.name, category: s.category, duration: s.duration, url: s.url } });
-  }, [dispatch, editMode]);
+  }, [dispatch, editMode, play]);
 
   // --- Remove ---
   const handleRemove = useCallback((id: string) => {

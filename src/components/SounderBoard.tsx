@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useSession } from './SessionProvider';
+import { useAudio } from './AudioProvider';
 import { SounderPad } from './SounderPad';
 
 interface SounderFromApi {
@@ -14,6 +15,7 @@ interface SounderFromApi {
 
 export function SounderBoard() {
   const { dispatch } = useSession();
+  const { play } = useAudio();
   const [apiSounders, setApiSounders] = useState<SounderFromApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,13 +81,8 @@ export function SounderBoard() {
   }, [filteredSounders]);
 
   const handleTrigger = useCallback((sounder: SounderFromApi) => {
-    const audio = new Audio();
-    audio.preload = 'auto';
-    audio.src = sounder.url;
     setPlayingId(sounder.id);
-    audio.play().catch(() => {
-      setPlayingId(null);
-    });
+    const audio = play(sounder.url);
     audio.addEventListener('ended', () => {
       setPlayingId(null);
     });
