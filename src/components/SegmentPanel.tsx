@@ -1,8 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from './SessionProvider';
 import { useUniqueId } from '@/hooks/useUniqueId';
+
+interface SegmentTemplate {
+  id: string;
+  label: string;
+  type: 'intro' | 'segment' | 'ad' | 'outro' | 'news' | 'interview';
+  introSounder?: string;
+  outroSounder?: string;
+}
 
 const SEGMENT_TYPES = [
   { value: 'intro', label: 'Intro' },
@@ -18,7 +26,44 @@ export function SegmentPanel() {
   const [label, setLabel] = useState('');
   const [segType, setSegType] = useState<string>('segment');
   const [activeSegId, setActiveSegId] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<SegmentTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
   const newId = useUniqueId('seg');
+
+  // Load templates from Azure config
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/segment-templates/list')
+      .then(res => res.json())
+      .then(data => {
+        if (cancelled) return;
+        setTemplates(data.segmentTemplates || []);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Play a sounder by blob path
+  const playSounder = useCallback((blobPath: string) => {
+    const url = `/api/sounders/play?path=${encodeURIComponent(blobPath)}`;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.src = url;
+    audio.play().catch(() => {});
+  }, []);
+
+  // Apply a template: fill form + play intro sounder
+  const handleTemplateClick = useCallback((tpl: SegmentTemplate) => {
+    setLabel(tpl.label);
+    setSegType(tpl.type);
+    if (tpl.introSounder) {
+      playSounder(tpl.introSounder);
+    }
+  }, [playSounder]);
 
   const handleStartSegment = () => {
     if (activeSegId) return;
@@ -49,21 +94,52 @@ export function SegmentPanel() {
         Segments ({state.segments.length})
       </h2>
 
+      {/* Segment Templates */}
+      {!loading && templates.length > 0 && (
+        <div>
+          <h3 className="text-xs font-medium text-[var(--muted)] mb-2">Quick Start</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {templates.map(tpl => (
+              <button
+                key={tpl.id}
+                onClick={() => handleTemplateClick(tpl)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${
+                  label === tpl.label && segType === tpl.type
+                    ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-white'
+                    : 'border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--accent)]/50 hover:text-[var(--foreground)]'
+                }`}
+              >
+                {tpl.label}
+                {tpl.introSounder && <span className="ml-1 opacity-60">🔊</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Divider */}
+      {(templates.length > 0 || loading) && (
+        <div className="border-t border-[var(--card-border)]" />
+      )}
+
       {/* Segment type selector */}
-      <div className="flex flex-wrap gap-2">
-        {SEGMENT_TYPES.map(st => (
-          <button
-            key={st.value}
-            onClick={() => setSegType(st.value)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${
-              segType === st.value
-                ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-white'
-                : 'border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--muted)]'
-            }`}
-          >
-            {st.label}
-          </button>
-        ))}
+      <div>
+        <h3 className="text-xs font-medium text-[var(--muted)] mb-2">Segment Type</h3>
+        <div className="flex flex-wrap gap-2">
+          {SEGMENT_TYPES.map(st => (
+            <button
+              key={st.value}
+              onClick={() => setSegType(st.value)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${
+                segType === st.value
+                  ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-white'
+                  : 'border-[var(--card-border)] text-[var(--muted)] hover:border-[var(--muted)]'
+              }`}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Label input */}
@@ -96,7 +172,7 @@ export function SegmentPanel() {
       <div className="flex-1 overflow-y-auto space-y-2">
         {state.segments.length === 0 && (
           <p className="text-sm text-[var(--muted)] text-center py-8">
-            No segments. Start a segment to mark chapter boundaries.
+            No segments. Use a quick-start template above or create one manually.
           </p>
         )}
         {state.segments.map(seg => (
@@ -122,6 +198,12 @@ export function SegmentPanel() {
                 {seg.end_ms !== null && ` (${((seg.end_ms - seg.start_ms) / 1000).toFixed(1)}s)`}
               </div>
             </div>
+            <button
+              onClick={() => dispatch({ type: 'DELETE_SEGMENT', id: seg.id })}
+              className="text-xs text-[var(--muted)] hover:text-[var(--danger)] transition-colors shrink-0 mt-0.5"
+            >
+              ✕
+            </button>
           </div>
         ))}
       </div>

@@ -71,7 +71,8 @@ export type SessionAction =
   | { type: 'ADD_EDIT_CUE'; cue: EditCue }
   | { type: 'UPDATE_EDIT_CUE'; id: string; end_ms: number }
   | { type: 'DELETE_EDIT_CUE'; id: string }
-  | { type: 'RESET' };
+  | { type: 'DELETE_SEGMENT'; id: string }
+  | { type: 'RESET' }
 
 // --- Pusher Event Types ---
 
@@ -127,12 +128,19 @@ export interface PusherEditCueDeleteEvent {
   from?: string;
 }
 
+export interface PusherSegmentDeleteEvent {
+  kind: 'segment-delete';
+  id: string;
+  from?: string;
+}
+
 export type PusherSessionEvent =
   | PusherSounderEvent
   | PusherNoteEvent
   | PusherNoteDeleteEvent
   | PusherSegmentStartEvent
   | PusherSegmentEndEvent
+  | PusherSegmentDeleteEvent
   | PusherEditCueEvent
   | PusherEditCueUpdateEvent
   | PusherEditCueDeleteEvent;

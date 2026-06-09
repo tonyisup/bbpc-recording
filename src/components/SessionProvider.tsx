@@ -57,6 +57,9 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
     case 'DELETE_EDIT_CUE':
       return { ...state, editCues: state.editCues.filter(c => c.id !== action.id) };
 
+    case 'DELETE_SEGMENT':
+      return { ...state, segments: state.segments.filter(seg => seg.id !== action.id) };
+
     case 'RESET':
       return { ...createInitialState(state.episode, state.date, state.hostName, state.sounders) };
 
@@ -103,6 +106,8 @@ function actionToPusherEvent(
       return { kind: 'segment-start', segment: action.segment, from: sessionId };
     case 'END_SEGMENT':
       return { kind: 'segment-end', id: action.id, end_ms: action.end_ms, from: sessionId };
+    case 'DELETE_SEGMENT':
+      return { kind: 'segment-delete', id: action.id, from: sessionId };
     case 'ADD_EDIT_CUE':
       return { kind: 'edit-cue', cue: action.cue, from: sessionId };
     case 'UPDATE_EDIT_CUE':
@@ -130,6 +135,8 @@ function pusherEventToAction(event: PusherSessionEvent): SessionAction {
       return { type: 'START_SEGMENT', segment: event.segment };
     case 'segment-end':
       return { type: 'END_SEGMENT', id: event.id, end_ms: event.end_ms };
+    case 'segment-delete':
+      return { type: 'DELETE_SEGMENT', id: event.id };
     case 'edit-cue':
       return { type: 'ADD_EDIT_CUE', cue: event.cue };
     case 'edit-cue-update':
