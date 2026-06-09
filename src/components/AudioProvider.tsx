@@ -5,18 +5,43 @@ import { createContext, useContext, useCallback, useRef } from 'react';
 interface AudioManager {
   play: (url: string) => HTMLAudioElement;
   stopAll: () => void;
+  setSounderDestination: (dest: MediaStreamAudioDestinationNode | null) => void;
 }
 
 const AudioContext = createContext<AudioManager | null>(null);
 
 export function AudioProvider({ children }: { children: React.ReactNode }) {
   const activeRef = useRef<Set<HTMLAudioElement>>(new Set());
+  const sounderDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Ensure we have an AudioContext for createMediaElementSource
+  const getAudioContext = useCallback(() => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
 
   const play = useCallback((url: string): HTMLAudioElement => {
     const audio = new Audio();
     audio.preload = 'auto';
     audio.src = url;
     activeRef.current.add(audio);
+
+    // Route to sounder destination if recording
+    if (sounderDestRef.current) {
+      try {
+        const ctx = getAudioContext();
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(sounderDestRef.current);
+      } catch {
+        // If already connected or CORS issue, just play normally
+      }
+    }
 
     audio.addEventListener('ended', () => {
       activeRef.current.delete(audio);
@@ -31,19 +56,23 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     });
 
     return audio;
-  }, []);
+  }, [getAudioContext]);
 
   const stopAll = useCallback(() => {
     for (const audio of activeRef.current) {
       audio.pause();
       audio.removeAttribute('src');
-      audio.load(); // forces release of audio resource
+      audio.load();
     }
     activeRef.current.clear();
   }, []);
 
+  const setSounderDestination = useCallback((dest: MediaStreamAudioDestinationNode | null) => {
+    sounderDestRef.current = dest;
+  }, []);
+
   return (
-    <AudioContext.Provider value={{ play, stopAll }}>
+    <AudioContext.Provider value={{ play, stopAll, setSounderDestination }}>
       {children}
     </AudioContext.Provider>
   );

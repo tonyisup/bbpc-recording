@@ -23,7 +23,8 @@ function saveFavorites(favs: SounderItem[]) {
 export function FavoritesSidebar() {
   const { dispatch } = useSession();
   const { play } = useAudio();
-  const [favorites, setFavorites] = useState<SounderItem[]>(loadFavorites);
+  const [favorites, setFavorites] = useState<SounderItem[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -33,8 +34,17 @@ export function FavoritesSidebar() {
   const [renameText, setRenameText] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Persist on change
-  useEffect(() => { saveFavorites(favorites); }, [favorites]);
+  // Load from localStorage after mount (SSR-safe)
+  useEffect(() => {
+    setFavorites(loadFavorites());
+    setHydrated(true);
+  }, []);
+
+  // Persist on change (skip initial empty state before hydration)
+  useEffect(() => {
+    if (!hydrated) return;
+    saveFavorites(favorites);
+  }, [favorites, hydrated]);
 
   // Focus rename input when entering rename mode
   useEffect(() => {
