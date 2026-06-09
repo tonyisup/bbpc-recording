@@ -96,6 +96,7 @@ export function SounderBoard() {
         name: sounder.name,
         category: sounder.category,
         duration: sounder.duration,
+        url: sounder.url,
       },
     });
   }, [dispatch]);

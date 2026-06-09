@@ -1,45 +1,26 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
-
-interface SounderItem {
-  id: string;
-  name: string;
-  category: string;
-  url: string;
-  duration: number;
-  size?: number;
-  contentType?: string;
-}
+import { useCallback } from 'react';
+import type { Sounder } from '@/types';
 
 interface SounderPadProps {
-  sounder: SounderItem;
+  sounder: Sounder;
   playing: boolean;
-  onTrigger: (s: SounderItem) => void;
+  onTrigger: (s: Sounder) => void;
   draggable?: boolean;
 }
 
 export function SounderPad({ sounder, playing, onTrigger, draggable = false }: SounderPadProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('application/json', JSON.stringify(sounder));
     e.dataTransfer.effectAllowed = 'copy';
   }, [sounder]);
 
-  const handleClick = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    onTrigger(sounder);
-  }, [sounder, onTrigger]);
-
   return (
     <button
       draggable={draggable}
       onDragStart={draggable ? handleDragStart : undefined}
-      onClick={handleClick}
+      onClick={() => onTrigger(sounder)}
       className={`
         relative px-2.5 py-2 text-xs font-medium rounded-lg border transition-all text-left select-none
         ${playing

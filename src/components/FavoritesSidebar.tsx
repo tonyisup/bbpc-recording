@@ -2,14 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSession } from './SessionProvider';
-
-interface SounderItem {
-  id: string;
-  name: string;
-  category: string;
-  url: string;
-  duration: number;
-}
+import type { Sounder as SounderItem } from '@/types';
 
 const STORAGE_KEY = 'bbpc-sounders-favorites';
 
@@ -30,16 +23,29 @@ export function FavoritesSidebar() {
   const { dispatch } = useSession();
   const [favorites, setFavorites] = useState<SounderItem[]>(loadFavorites);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropIdx, setDropIdx] = useState<number | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Persist to localStorage on change
+  // Persist on change
+  useEffect(() => { saveFavorites(favorites); }, [favorites]);
+
+  // Focus rename input when entering rename mode
   useEffect(() => {
-    saveFavorites(favorites);
-  }, [favorites]);
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingId]);
 
+  // --- Play ---
   const handleTrigger = useCallback((s: SounderItem) => {
+    if (editMode) return;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -49,64 +55,102 @@ export function FavoritesSidebar() {
     audio.src = s.url;
     audioRef.current = audio;
     setPlayingId(s.id);
-    audio.play().catch(() => {
-      setPlayingId(null);
-      audioRef.current = null;
-    });
-    audio.addEventListener('ended', () => {
-      setPlayingId(null);
-      audioRef.current = null;
-    });
-    dispatch({
-      type: 'TRIGGER_SOUNDER',
-      sounder: { id: s.id, name: s.name, category: s.category, duration: s.duration },
-    });
-  }, [dispatch]);
+    audio.play().catch(() => { setPlayingId(null); audioRef.current = null; });
+    audio.addEventListener('ended', () => { setPlayingId(null); audioRef.current = null; });
+    dispatch({ type: 'TRIGGER_SOUNDER', sounder: { id: s.id, name: s.name, category: s.category, duration: s.duration, url: s.url } });
+  }, [dispatch, editMode]);
 
+  // --- Remove ---
   const handleRemove = useCallback((id: string) => {
     setFavorites(prev => prev.filter(f => f.id !== id));
   }, []);
 
-  const handleClear = useCallback(() => {
-    setFavorites([]);
+  const handleClear = useCallback(() => { setFavorites([]); }, []);
+
+  // --- Rename ---
+  const startRename = useCallback((s: SounderItem) => {
+    setRenamingId(s.id);
+    setRenameText(s.name);
   }, []);
 
-  // Handle drop from drag source
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const commitRename = useCallback(() => {
+    if (!renamingId) return;
+    const trimmed = renameText.trim();
+    if (trimmed) {
+      setFavorites(prev => prev.map(f => f.id === renamingId ? { ...f, name: trimmed } : f));
+    }
+    setRenamingId(null);
+    setRenameText('');
+  }, [renamingId, renameText]);
+
+  const cancelRename = useCallback(() => {
+    setRenamingId(null);
+    setRenameText('');
+  }, []);
+
+  // --- Reorder (drag within grid) ---
+  const handlePadDragStart = useCallback((idx: number) => (e: React.DragEvent) => {
+    if (!editMode) return;
+    e.dataTransfer.setData('text/plain', String(idx));
+    e.dataTransfer.effectAllowed = 'move';
+    setDragIdx(idx);
+  }, [editMode]);
+
+  const handlePadDragOver = useCallback((idx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragIdx !== null && idx !== dragIdx) {
+      setDropIdx(idx);
+    }
+  }, [dragIdx]);
+
+  const handlePadDrop = useCallback((targetIdx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    const sourceIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (isNaN(sourceIdx) || sourceIdx === targetIdx) return;
+    setFavorites(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(sourceIdx, 1);
+      next.splice(targetIdx > sourceIdx ? targetIdx - 1 : targetIdx, 0, moved);
+      return next;
+    });
+    setDragIdx(null);
+    setDropIdx(null);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDragIdx(null);
+    setDropIdx(null);
+  }, []);
+
+  // --- Drop from external (Sounders tab) ---
+  const handleSidebarDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setDragOver(true);
   }, []);
 
-  const handleDragLeave = useCallback(() => {
-    setDragOver(false);
-  }, []);
+  const handleSidebarDragLeave = useCallback(() => { setDragOver(false); }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleSidebarDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json')) as SounderItem;
-      if (!data || !data.id) return;
+      if (!data?.id) return;
       setFavorites(prev => {
         if (prev.some(f => f.id === data.id)) return prev;
         return [...prev, data];
       });
-    } catch {
-      // ignore malformed drops
-    }
+    } catch { /* ignore */ }
   }, []);
-
-  // Suppress unused variable warning
-  void editing;
-  void setEditing;
 
   return (
     <div
       className={`flex flex-col h-full transition-colors ${dragOver ? 'bg-[var(--accent)]/10' : ''}`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragOver={handleSidebarDragOver}
+      onDragLeave={handleSidebarDragLeave}
+      onDrop={handleSidebarDrop}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--card-border)]">
@@ -118,17 +162,46 @@ export function FavoritesSidebar() {
             </span>
           )}
         </h2>
-        {favorites.length > 0 && (
-          <button
-            onClick={handleClear}
-            className="text-[10px] text-[var(--muted)] hover:text-[var(--danger)] transition-colors"
-          >
-            Clear
-          </button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {favorites.length > 0 && !editMode && (
+            <button
+              onClick={() => setEditMode(true)}
+              className="text-[10px] text-[var(--muted)] hover:text-[var(--accent)] transition-colors px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--card-border)]"
+              title="Rearrange, rename, and remove favorites"
+            >
+              Edit
+            </button>
+          )}
+          {editMode && (
+            <button
+              onClick={() => { setEditMode(false); cancelRename(); }}
+              className="text-[10px] text-[var(--accent)] hover:text-white transition-colors px-1.5 py-0.5 rounded border border-[var(--accent)]/50 hover:border-[var(--accent)] bg-[var(--accent)]/10"
+            >
+              Done
+            </button>
+          )}
+          {favorites.length > 0 && !editMode && (
+            <button
+              onClick={handleClear}
+              className="text-[10px] text-[var(--muted)] hover:text-[var(--danger)] transition-colors"
+              title="Remove all favorites"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Drop zone hint when empty */}
+      {/* Edit mode hint */}
+      {editMode && favorites.length > 0 && (
+        <div className="px-3 py-1.5 bg-[var(--accent)]/5 border-b border-[var(--card-border)]">
+          <p className="text-[10px] text-[var(--muted)]">
+            Drag to reorder · Tap name to rename · ✕ to remove
+          </p>
+        </div>
+      )}
+
+      {/* Empty state */}
       {favorites.length === 0 && (
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
@@ -144,27 +217,65 @@ export function FavoritesSidebar() {
       {favorites.length > 0 && (
         <div className="flex-1 overflow-y-auto p-2">
           <div className="grid grid-cols-2 gap-1.5">
-            {favorites.map(s => (
-              <div key={s.id} className="relative group">
-                <button
-                  onClick={() => handleTrigger(s)}
-                  className={`w-full px-2 py-2 text-xs font-medium rounded-lg border transition-all text-left ${
-                    playingId === s.id
-                      ? 'border-[var(--accent)] bg-[var(--accent)]/20 text-white'
-                      : 'border-[var(--card-border)] bg-[var(--card-bg)] hover:border-[var(--accent)]/50'
-                  }`}
-                >
-                  <span className="block truncate leading-tight">{s.name}</span>
-                  <span className="block text-[10px] text-[var(--muted)] mt-0.5">
-                    {(s.duration / 1000).toFixed(1)}s
-                  </span>
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleRemove(s.id); }}
-                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--danger)] text-white text-[8px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                >
-                  ✕
-                </button>
+            {favorites.map((s, idx) => (
+              <div
+                key={s.id}
+                draggable={editMode}
+                onDragStart={handlePadDragStart(idx)}
+                onDragOver={handlePadDragOver(idx)}
+                onDrop={handlePadDrop(idx)}
+                onDragEnd={handleDragEnd}
+                className={`relative group rounded-lg transition-all ${
+                  editMode && dropIdx === idx && dragIdx !== idx
+                    ? 'ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-[var(--card-bg)]'
+                    : ''
+                } ${editMode && dragIdx === idx ? 'opacity-40' : ''}`}
+              >
+                {/* Playing indicator */}
+                {playingId === s.id && (
+                  <div className="absolute inset-0 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/20 z-10 pointer-events-none" />
+                )}
+
+                {/* Edit overlay: remove button */}
+                {editMode && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRemove(s.id); }}
+                    className="absolute -top-1 -right-1 z-20 w-5 h-5 rounded-full bg-[var(--danger)] text-white text-[10px] font-bold flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                  >
+                    ✕
+                  </button>
+                )}
+
+                {/* Pad content */}
+                {renamingId === s.id ? (
+                  <input
+                    ref={renameInputRef}
+                    value={renameText}
+                    onChange={e => setRenameText(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') cancelRename(); }}
+                    onClick={e => e.stopPropagation()}
+                    className="w-full px-2 py-1.5 text-xs font-medium rounded-lg border border-[var(--accent)] bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none text-left"
+                  />
+                ) : (
+                  <button
+                    onClick={() => { if (editMode) return; handleTrigger(s); }}
+                    onDoubleClick={() => { if (editMode) startRename(s); }}
+                    title={editMode ? 'Drag to reorder, double-click to rename' : s.name}
+                    className={`w-full px-2 py-2 text-xs font-medium rounded-lg border transition-all text-left select-none ${
+                      editMode
+                        ? 'border-[var(--card-border)] bg-[var(--card-bg)] cursor-grab active:cursor-grabbing'
+                        : 'border-[var(--card-border)] bg-[var(--card-bg)] hover:border-[var(--accent)]/50 cursor-pointer'
+                    }`}
+                  >
+                    <span className="block truncate leading-tight">{s.name}</span>
+                    {!editMode && (
+                      <span className="block text-[10px] text-[var(--muted)] mt-0.5">
+                        {(s.duration / 1000).toFixed(1)}s
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             ))}
           </div>

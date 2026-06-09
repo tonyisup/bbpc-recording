@@ -5,7 +5,7 @@ export interface Sounder {
   name: string;
   category: string;
   duration: number; // ms
-  playing?: boolean;
+  url: string;
 }
 
 export interface EditCue {
