@@ -44,6 +44,36 @@ export function DashboardHeader() {
   const recording = useRecordingEngine();
   const uploadStatusRef = useRef<'idle' | 'uploading' | 'done' | 'error'>('idle');
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Load persisted host name
+  const [hostName, setHostName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('bbpc-host-name') || state.hostName;
+    }
+    return state.hostName;
+  });
+
+  // Persist name changes
+  const saveName = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      setHostName(trimmed);
+      localStorage.setItem('bbpc-host-name', trimmed);
+    }
+    setEditingName(false);
+  }, []);
+
+  const startNameEdit = useCallback(() => {
+    setNameInput(hostName);
+    setEditingName(true);
+    setTimeout(() => {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    }, 0);
+  }, [hostName]);
 
   // Pusher recording sync
   const recordingStartRef = useRef<number>(0);
@@ -59,7 +89,7 @@ export function DashboardHeader() {
 
   const { broadcastStart, broadcastStop } = useRecordingSync({
     channelName: state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-    hostName: state.hostName,
+    hostName,
     onRemoteStart: handleRemoteStart,
     onRemoteStop: handleRemoteStop,
   });
@@ -109,8 +139,8 @@ export function DashboardHeader() {
       uploadStatusRef.current = 'uploading';
 
       const [micOk, sounderOk] = await Promise.all([
-        uploadTrack(state.episode, state.hostName, 'mic', tracks.mic, tracks.startedAt),
-        uploadTrack(state.episode, state.hostName, 'sounders', tracks.sounders, tracks.startedAt),
+        uploadTrack(state.episode, hostName, 'mic', tracks.mic, tracks.startedAt),
+        uploadTrack(state.episode, hostName, 'sounders', tracks.sounders, tracks.startedAt),
       ]);
 
       const finalStatus = micOk && sounderOk ? 'done' : 'error';
@@ -196,8 +226,29 @@ export function DashboardHeader() {
           ⏹
         </button>
 
-        {/* Host name */}
-        <span className="text-sm text-[var(--muted)]">{state.hostName}</span>
+        {/* Host name — click to edit */}
+        {editingName ? (
+          <input
+            ref={nameInputRef}
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={() => saveName(nameInput)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') saveName(nameInput);
+              if (e.key === 'Escape') setEditingName(false);
+            }}
+            className="text-sm px-2 py-0.5 rounded border border-[var(--accent)] bg-[var(--card-bg)] text-[var(--foreground)] w-24 focus:outline-none"
+            placeholder="Your name"
+          />
+        ) : (
+          <button
+            onClick={startNameEdit}
+            className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors px-2 py-0.5 rounded border border-transparent hover:border-[var(--card-border)]"
+            title="Click to set your name"
+          >
+            {hostName}
+          </button>
+        )}
 
         {/* Session timer */}
         <div className={`font-mono text-xl font-bold tabular-nums ${state.isRecording ? 'text-[var(--danger)]' : 'text-[var(--muted)]'}`}>

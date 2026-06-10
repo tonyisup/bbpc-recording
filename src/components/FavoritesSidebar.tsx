@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
+import { usePresence } from '@/hooks/usePresence';
 import type { Sounder as SounderItem } from '@/types';
 
 const STORAGE_KEY = 'bbpc-sounders-favorites';
@@ -21,8 +22,12 @@ function saveFavorites(favs: SounderItem[]) {
 }
 
 export function FavoritesSidebar() {
-  const { dispatch } = useSession();
+  const { state, dispatch } = useSession();
   const { play } = useAudio();
+  const { members, connected } = usePresence({
+    channelName: state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    hostName: state.hostName,
+  });
   const [favorites, setFavorites] = useState<SounderItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -284,6 +289,27 @@ export function FavoritesSidebar() {
           </div>
         </div>
       )}
+
+      {/* Connection Info Panel */}
+      <div className="border-t border-[var(--card-border)] mt-auto shrink-0">
+        <div className="flex items-center justify-between px-3 py-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+            Online
+          </h3>
+          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+        </div>
+        <div className="px-3 pb-2 space-y-1">
+          {members.length === 0 && (
+            <p className="text-[10px] text-[var(--muted)]">No other hosts connected</p>
+          )}
+          {members.map(member => (
+            <div key={member.id} className="flex items-center gap-2 text-xs">
+              <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
+              <span className="text-[var(--foreground)]">{member.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
