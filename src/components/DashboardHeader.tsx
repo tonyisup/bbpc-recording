@@ -47,6 +47,7 @@ export function DashboardHeader() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const [micPermissionOk, setMicPermissionOk] = useState(false);
 
   // Load persisted host name
   const [hostName, setHostName] = useState(() => {
@@ -56,7 +57,6 @@ export function DashboardHeader() {
     return state.hostName;
   });
 
-  // Persist name changes
   const saveName = useCallback((name: string) => {
     const trimmed = name.trim();
     if (trimmed) {
@@ -78,14 +78,30 @@ export function DashboardHeader() {
   // Pusher recording sync
   const recordingStartRef = useRef<number>(0);
 
-  const handleRemoteStart = useCallback((startedAt: number) => {
+  const handleRemoteStart = useCallback(async (startedAt: number) => {
     console.log('[Recording] Remote host started recording at', startedAt);
-    // Could auto-start local recording here if desired
-  }, []);
+    // Auto-start local recording to stay in sync
+    if (!recording.state.isRecording) {
+      try {
+        await recording.startRecording();
+        recordingStartRef.current = startedAt;
+      } catch (err) {
+        console.error('[Recording] Failed to auto-start:', err);
+      }
+    }
+  }, [recording]);
 
-  const handleRemoteStop = useCallback((startedAt: number, durationMs: number) => {
+  const handleRemoteStop = useCallback(async (startedAt: number, durationMs: number) => {
     console.log('[Recording] Remote host stopped recording', { startedAt, durationMs });
-  }, []);
+    // Auto-stop local recording
+    if (recording.state.isRecording) {
+      try {
+        await recording.stopRecording();
+      } catch (err) {
+        console.error('[Recording] Failed to auto-stop:', err);
+      }
+    }
+  }, [recording]);
 
   const { broadcastStart, broadcastStop } = useRecordingSync({
     channelName: state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
@@ -102,7 +118,10 @@ export function DashboardHeader() {
     startedAt: number,
   ) => {
     try {
-      // Convert blob to base64 (browser-compatible)
+      if (blob.size < 100) {
+        console.log('[Recording] Skipping empty track:', trackType, blob.size);
+        return true;
+      }
       const arrayBuffer = await blob.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
       let binary = '';
@@ -125,45 +144,58 @@ export function DashboardHeader() {
     }
   }, []);
 
-  const handleToggleRecording = async () => {
-    if (recording.state.isRecording) {
-      // Stop recording
-      const tracks = await recording.stopRecording();
-      recordingStartRef.current = 0;
+  // Unified start: session + audio recording + broadcast
+  const handleStartRecording = async () => {
+    // Request mic permission first
+    const hasPermission = await recording.requestMicPermission();
+    if (!hasPermission) return;
+    setMicPermissionOk(true);
 
-      // Broadcast stop to other hosts
-      broadcastStop(tracks.startedAt, tracks.durationMs);
+    const now = Date.now();
+    recordingStartRef.current = now;
 
-      // Upload both tracks
-      setUploadStatus('uploading');
-      uploadStatusRef.current = 'uploading';
+    // Start session recording (timeline for notes/cues/segments)
+    dispatch({ type: 'START_RECORDING' });
 
-      const [micOk, sounderOk] = await Promise.all([
-        uploadTrack(state.episode, hostName, 'mic', tracks.mic, tracks.startedAt),
-        uploadTrack(state.episode, hostName, 'sounders', tracks.sounders, tracks.startedAt),
-      ]);
+    // Start WebRTC audio recording (mic + sounders)
+    await recording.startRecording();
 
-      const finalStatus = micOk && sounderOk ? 'done' : 'error';
-      setUploadStatus(finalStatus);
-      uploadStatusRef.current = finalStatus;
-
-      // Reset status after 3 seconds
-      setTimeout(() => {
-        setUploadStatus('idle');
-        uploadStatusRef.current = 'idle';
-      }, 3000);
-    } else {
-      // Start recording
-      const hasPermission = await recording.requestMicPermission();
-      if (!hasPermission) return;
-
-      await recording.startRecording();
-      recordingStartRef.current = Date.now();
-
-      // Broadcast start to other hosts
-      broadcastStart(recordingStartRef.current);
-    }
+    // Broadcast to all hosts
+    broadcastStart(now);
   };
+
+  // Unified stop: session + audio recording + broadcast + upload
+  const handleStopRecording = async () => {
+    // Stop session recording
+    dispatch({ type: 'STOP_RECORDING' });
+
+    // Stop WebRTC audio recording
+    const tracks = await recording.stopRecording();
+    recordingStartRef.current = 0;
+
+    // Broadcast stop to other hosts
+    broadcastStop(tracks.startedAt, tracks.durationMs);
+
+    // Upload both tracks
+    setUploadStatus('uploading');
+    uploadStatusRef.current = 'uploading';
+
+    const [micOk, sounderOk] = await Promise.all([
+      uploadTrack(state.episode, hostName, 'mic', tracks.mic, tracks.startedAt),
+      uploadTrack(state.episode, hostName, 'sounders', tracks.sounders, tracks.startedAt),
+    ]);
+
+    const finalStatus = micOk && sounderOk ? 'done' : 'error';
+    setUploadStatus(finalStatus);
+    uploadStatusRef.current = finalStatus;
+
+    setTimeout(() => {
+      setUploadStatus('idle');
+      uploadStatusRef.current = 'idle';
+    }, 3000);
+  };
+
+  const isRecording = state.isRecording || recording.state.isRecording;
 
   return (
     <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
@@ -173,7 +205,7 @@ export function DashboardHeader() {
       </div>
 
       <div className="flex items-center gap-3">
-        {/* WebRTC Audio Recording */}
+        {/* WebRTC Audio Recording Status */}
         <div className="flex items-center gap-2 pr-3 border-r border-[var(--card-border)]">
           {recording.state.error ? (
             <span className="text-xs text-[var(--danger)]" title={recording.state.error}>
@@ -197,23 +229,9 @@ export function DashboardHeader() {
               )}
             </>
           ) : (
-            <button
-              onClick={handleToggleRecording}
-              disabled={uploadStatus === 'uploading'}
-              className="px-2 py-1 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-50"
-              title="Start recording mic + sounders to separate tracks"
-            >
-              ⏺ Record Audio
-            </button>
-          )}
-
-          {recording.state.isRecording && (
-            <button
-              onClick={handleToggleRecording}
-              className="px-2 py-1 text-xs font-medium rounded border border-[var(--danger)] text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white transition-colors"
-            >
-              Stop
-            </button>
+            <span className="text-xs text-[var(--muted)]">
+              {micPermissionOk ? '🎙 Ready' : '🎙 Click Start'}
+            </span>
           )}
         </div>
 
@@ -251,21 +269,21 @@ export function DashboardHeader() {
         )}
 
         {/* Session timer */}
-        <div className={`font-mono text-xl font-bold tabular-nums ${state.isRecording ? 'text-[var(--danger)]' : 'text-[var(--muted)]'}`}>
-          {state.isRecording ? formatElapsed(elapsedMs) : '--:--:--'}
+        <div className={`font-mono text-xl font-bold tabular-nums ${isRecording ? 'text-[var(--danger)]' : 'text-[var(--muted)]'}`}>
+          {isRecording ? formatElapsed(elapsedMs) : '--:--:--'}
         </div>
 
-        {/* Session recording */}
-        {state.isRecording ? (
+        {/* Unified Start/Stop Recording */}
+        {isRecording ? (
           <button
-            onClick={() => dispatch({ type: 'STOP_RECORDING' })}
+            onClick={handleStopRecording}
             className="px-3 py-1.5 text-xs font-medium rounded bg-[var(--danger)] text-white hover:opacity-90 transition-opacity"
           >
-            Stop
+            Stop Recording
           </button>
         ) : (
           <button
-            onClick={() => dispatch({ type: 'START_RECORDING' })}
+            onClick={handleStartRecording}
             className="px-3 py-1.5 text-xs font-medium rounded bg-[var(--success)] text-white hover:opacity-90 transition-opacity"
           >
             Start Recording
