@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useSessionSync } from '@/hooks/useSessionSync';
-import type { SessionState, SessionAction, Manifest, Sounder, SessionNote, Segment, EditCue, PusherSessionEvent } from '@/types';
+import type { SessionState, SessionAction, Manifest, Sounder, SessionNote, Segment, EditCue, PusherSessionEvent, PusherEvent } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Reducer
@@ -123,7 +123,7 @@ function actionToPusherEvent(
 // Pusher event → Action mapping (for remote events)
 // ---------------------------------------------------------------------------
 
-function pusherEventToAction(event: PusherSessionEvent): SessionAction {
+function pusherEventToAction(event: PusherEvent): SessionAction | null {
   switch (event.kind) {
     case 'sounder':
       return { type: 'TRIGGER_SOUNDER', sounder: event.sounder };
@@ -143,6 +143,8 @@ function pusherEventToAction(event: PusherSessionEvent): SessionAction {
       return { type: 'UPDATE_EDIT_CUE', id: event.id, end_ms: event.end_ms };
     case 'edit-cue-delete':
       return { type: 'DELETE_EDIT_CUE', id: event.id };
+    default:
+      return null;
   }
 }
 
@@ -209,10 +211,12 @@ export function SessionProvider({
   // Unique session ID to filter out self-echoed events
   const sessionIdRef = useRef(`sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
-  const handleRemoteEvent = useCallback((event: PusherSessionEvent) => {
+  const handleRemoteEvent = useCallback((event: PusherEvent) => {
     // Skip events that originated from this session (Pusher echoes back)
     if (event.from === sessionIdRef.current) return;
-    rawDispatch(pusherEventToAction(event));
+    // Only dispatch session-affecting events (recording events are handled by useRecordingSync)
+    const action = pusherEventToAction(event);
+    if (action) rawDispatch(action);
   }, []);
 
   const { sendEvent } = useSessionSync({

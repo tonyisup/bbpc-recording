@@ -134,6 +134,20 @@ export interface PusherSegmentDeleteEvent {
   from?: string;
 }
 
+export interface PusherRecordingStartEvent {
+  kind: 'recording-started';
+  startedAt: number;
+  from?: string;
+}
+
+export interface PusherRecordingStopEvent {
+  kind: 'recording-stopped';
+  startedAt: number;
+  durationMs: number;
+  from?: string;
+}
+
+// All Pusher events that affect session state
 export type PusherSessionEvent =
   | PusherSounderEvent
   | PusherNoteEvent
@@ -144,3 +158,9 @@ export type PusherSessionEvent =
   | PusherEditCueEvent
   | PusherEditCueUpdateEvent
   | PusherEditCueDeleteEvent;
+
+// All Pusher events (session + recording sync)
+export type PusherEvent =
+  | PusherSessionEvent
+  | PusherRecordingStartEvent
+  | PusherRecordingStopEvent;

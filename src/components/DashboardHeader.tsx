@@ -1,8 +1,10 @@
 'use client';
 
+import { useCallback, useRef, useState } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
 import { useRecordingEngine } from '@/hooks/useRecordingEngine';
+import { useRecordingSync } from '@/hooks/useRecordingSync';
 
 function formatElapsed(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -29,7 +31,7 @@ function VUMeter({ level }: { level: number }) {
                 : 'bg-[var(--success)]'
               : 'bg-[var(--card-border)]'
           }`}
-          style={{ height: `${(i + 1) * 100 / bars}%` }}
+          style={{ height: `${((i + 1) * 100) / bars}%` }}
         />
       ))}
     </div>
@@ -40,21 +42,96 @@ export function DashboardHeader() {
   const { state, elapsedMs, dispatch } = useSession();
   const { stopAll } = useAudio();
   const recording = useRecordingEngine();
+  const uploadStatusRef = useRef<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+
+  // Pusher recording sync
+  const recordingStartRef = useRef<number>(0);
+
+  const handleRemoteStart = useCallback((startedAt: number) => {
+    console.log('[Recording] Remote host started recording at', startedAt);
+    // Could auto-start local recording here if desired
+  }, []);
+
+  const handleRemoteStop = useCallback((startedAt: number, durationMs: number) => {
+    console.log('[Recording] Remote host stopped recording', { startedAt, durationMs });
+  }, []);
+
+  const { broadcastStart, broadcastStop } = useRecordingSync({
+    channelName: state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    hostName: state.hostName,
+    onRemoteStart: handleRemoteStart,
+    onRemoteStop: handleRemoteStop,
+  });
+
+  const uploadTrack = useCallback(async (
+    episode: string,
+    hostName: string,
+    trackType: 'mic' | 'sounders',
+    blob: Blob,
+    startedAt: number,
+  ) => {
+    try {
+      // Convert blob to base64 (browser-compatible)
+      const arrayBuffer = await blob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64 = btoa(binary);
+
+      const res = await fetch('/api/recordings/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episode, hostName, trackType, startedAt, audioBase64: base64 }),
+      });
+
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      return true;
+    } catch (err) {
+      console.error('[Recording] Upload error:', err);
+      return false;
+    }
+  }, []);
 
   const handleToggleRecording = async () => {
     if (recording.state.isRecording) {
+      // Stop recording
       const tracks = await recording.stopRecording();
-      console.log('[Recording] Stopped', {
-        micSize: tracks.mic.size,
-        sounderSize: tracks.sounders.size,
-        durationMs: tracks.durationMs,
-      });
-      // TODO: upload tracks to Azure
+      recordingStartRef.current = 0;
+
+      // Broadcast stop to other hosts
+      broadcastStop(tracks.startedAt, tracks.durationMs);
+
+      // Upload both tracks
+      setUploadStatus('uploading');
+      uploadStatusRef.current = 'uploading';
+
+      const [micOk, sounderOk] = await Promise.all([
+        uploadTrack(state.episode, state.hostName, 'mic', tracks.mic, tracks.startedAt),
+        uploadTrack(state.episode, state.hostName, 'sounders', tracks.sounders, tracks.startedAt),
+      ]);
+
+      const finalStatus = micOk && sounderOk ? 'done' : 'error';
+      setUploadStatus(finalStatus);
+      uploadStatusRef.current = finalStatus;
+
+      // Reset status after 3 seconds
+      setTimeout(() => {
+        setUploadStatus('idle');
+        uploadStatusRef.current = 'idle';
+      }, 3000);
     } else {
+      // Start recording
       const hasPermission = await recording.requestMicPermission();
-      if (hasPermission) {
-        await recording.startRecording();
-      }
+      if (!hasPermission) return;
+
+      await recording.startRecording();
+      recordingStartRef.current = Date.now();
+
+      // Broadcast start to other hosts
+      broadcastStart(recordingStartRef.current);
     }
   };
 
@@ -79,11 +156,21 @@ export function DashboardHeader() {
               <span className="text-xs text-[var(--muted)] font-mono">
                 {formatElapsed(recording.state.durationMs)}
               </span>
+              {uploadStatus === 'uploading' && (
+                <span className="text-xs text-[var(--warning)] animate-pulse">↑ uploading...</span>
+              )}
+              {uploadStatus === 'done' && (
+                <span className="text-xs text-[var(--success)]">✓ uploaded</span>
+              )}
+              {uploadStatus === 'error' && (
+                <span className="text-xs text-[var(--danger)]">✗ upload failed</span>
+              )}
             </>
           ) : (
             <button
               onClick={handleToggleRecording}
-              className="px-2 py-1 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+              disabled={uploadStatus === 'uploading'}
+              className="px-2 py-1 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-50"
               title="Start recording mic + sounders to separate tracks"
             >
               ⏺ Record Audio

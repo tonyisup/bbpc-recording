@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import Pusher from 'pusher-js';
-import type { PusherSessionEvent } from '@/types';
+import type { PusherEvent } from '@/types';
 
 interface UseSessionSyncOptions {
   channelName: string;
   hostName: string;
-  onRemoteEvent: (event: PusherSessionEvent) => void;
+  onRemoteEvent: (event: PusherEvent) => void;
 }
 
 /**
@@ -39,7 +39,7 @@ export function useSessionSync({ channelName, hostName, onRemoteEvent }: UseSess
 
     const channel = pusher.subscribe(`presence-${channelName}`);
 
-    channel.bind('session-event', (data: PusherSessionEvent) => {
+    channel.bind('session-event', (data: PusherEvent) => {
       onRemoteRef.current(data);
     });
 
@@ -58,7 +58,7 @@ export function useSessionSync({ channelName, hostName, onRemoteEvent }: UseSess
     };
   }, [channelName, hostName]);
 
-  const sendEvent = useCallback(async (event: PusherSessionEvent) => {
+  const sendEvent = useCallback(async (event: PusherEvent) => {
     try {
       await fetch('/api/pusher/signal', {
         method: 'POST',
