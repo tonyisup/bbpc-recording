@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { SessionProvider } from '@/components/SessionProvider';
 import { AudioProvider } from '@/components/AudioProvider';
+import { PresenceProvider } from '@/components/PresenceProvider';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { SounderBoard } from '@/components/SounderBoard';
 import { FavoritesSidebar } from '@/components/FavoritesSidebar';
@@ -71,11 +72,16 @@ function DashboardContent() {
 }
 
 export default function Home() {
+  const channelName = 'ep-2026-06-09';
+  const hostName = 'tony';
+
   return (
-    <SessionProvider episode="EP-2026-06-09" hostName="tony" channelName="ep-2026-06-09">
-      <AudioProvider>
-        <DashboardContent />
-      </AudioProvider>
-    </SessionProvider>
+    <PresenceProvider channelName={channelName} hostName={hostName}>
+      <SessionProvider episode="EP-2026-06-09" hostName={hostName} channelName={channelName}>
+        <AudioProvider>
+          <DashboardContent />
+        </AudioProvider>
+      </SessionProvider>
+    </PresenceProvider>
   );
 }

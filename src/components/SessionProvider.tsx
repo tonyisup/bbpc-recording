@@ -11,7 +11,9 @@ import {
   type ReactNode,
 } from 'react';
 import { useSessionSync } from '@/hooks/useSessionSync';
-import type { SessionState, SessionAction, Manifest, Sounder, SessionNote, Segment, EditCue, PusherSessionEvent, PusherEvent } from '@/types';
+import { usePresence } from './PresenceProvider';
+import type { SessionState, SessionAction, Manifest, Sounder, SessionNote, Segment, EditCue, PusherEvent } from '@/types';
+import Pusher from 'pusher-js';
 
 // ---------------------------------------------------------------------------
 // Reducer
@@ -92,7 +94,7 @@ function actionToPusherEvent(
   hostName: string,
   recordingStart: number | null,
   sessionId: string,
-): PusherSessionEvent | null {
+): PusherEvent | null {
   switch (action.type) {
     case 'TRIGGER_SOUNDER': {
       const playedAt = recordingStart != null ? Date.now() - recordingStart : 0;
@@ -120,7 +122,7 @@ function actionToPusherEvent(
 }
 
 // ---------------------------------------------------------------------------
-// Pusher event → Action mapping (for remote events)
+// Pusher event → Action mapping
 // ---------------------------------------------------------------------------
 
 function pusherEventToAction(event: PusherEvent): SessionAction | null {
@@ -161,18 +163,18 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-// ---------------------------------------------------------------------------
-// Provider
-// ---------------------------------------------------------------------------
-
 interface SessionProviderProps {
-  children: ReactNode;
+  children: React.ReactNode;
   episode?: string;
   date?: string;
   hostName?: string;
   channelName?: string;
   sounders?: Sounder[];
 }
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
 
 export function SessionProvider({
   children,
@@ -182,6 +184,9 @@ export function SessionProvider({
   channelName,
   sounders = [],
 }: SessionProviderProps) {
+  // Get the shared Pusher channel from PresenceProvider
+  const { channel: existingChannel } = usePresence();
+
   const [state, rawDispatch] = useReducer(
     sessionReducer,
     null,
@@ -205,16 +210,13 @@ export function SessionProvider({
     return () => cancelAnimationFrame(rafRef.current);
   }, [state.isRecording, state.recordingStart]);
 
-  // Pusher sync
+  // Pusher sync — use shared channel from PresenceProvider
   const channel = channelName ?? episode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
-  // Unique session ID to filter out self-echoed events
   const sessionIdRef = useRef(`sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
   const handleRemoteEvent = useCallback((event: PusherEvent) => {
-    // Skip events that originated from this session (Pusher echoes back)
     if (event.from === sessionIdRef.current) return;
-    // Only dispatch session-affecting events (recording events are handled by useRecordingSync)
     const action = pusherEventToAction(event);
     if (action) rawDispatch(action);
   }, []);
@@ -223,6 +225,7 @@ export function SessionProvider({
     channelName: channel,
     hostName: state.hostName,
     onRemoteEvent: handleRemoteEvent,
+    existingChannel,
   });
 
   // Wrapped dispatch: local + broadcast

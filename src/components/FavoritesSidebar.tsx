@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
-import { usePresence } from '@/hooks/usePresence';
+import { usePresence } from './PresenceProvider';
 import type { Sounder as SounderItem } from '@/types';
 
 const STORAGE_KEY = 'bbpc-sounders-favorites';
@@ -24,10 +24,7 @@ function saveFavorites(favs: SounderItem[]) {
 export function FavoritesSidebar() {
   const { state, dispatch } = useSession();
   const { play } = useAudio();
-  const { members, connected } = usePresence({
-    channelName: state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-    hostName: state.hostName,
-  });
+  const { members, connected, resetConnections } = usePresence();
   const [favorites, setFavorites] = useState<SounderItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -294,9 +291,20 @@ export function FavoritesSidebar() {
       <div className="border-t border-[var(--card-border)] mt-auto shrink-0">
         <div className="flex items-center justify-between px-3 py-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-            Online
+            Online {members.length > 0 && <span className="text-[var(--accent)] normal-case">({members.length})</span>}
           </h3>
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+          <div className="flex items-center gap-1.5">
+            {members.length > 1 && (
+              <button
+                onClick={() => resetConnections()}
+                className="text-[9px] text-[var(--muted)] hover:text-[var(--danger)] transition-colors px-1 py-0.5 rounded border border-transparent hover:border-[var(--card-border)]"
+                title="Reset connections (fixes duplicate entries)"
+              >
+                Reset
+              </button>
+            )}
+            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+          </div>
         </div>
         <div className="px-3 pb-2 space-y-1">
           {members.length === 0 && (

@@ -8,20 +8,37 @@ interface UseSessionSyncOptions {
   channelName: string;
   hostName: string;
   onRemoteEvent: (event: PusherEvent) => void;
+  existingChannel?: ReturnType<Pusher['subscribe']> | null;
 }
 
 /**
  * Subscribe to a Pusher presence channel for real-time session sync.
  *
+ * If `existingChannel` is provided (from PresenceProvider), reuses that connection
+ * instead of creating a new one. This prevents duplicate presence entries.
+ *
  * Events are relayed through /api/pusher/signal (server-side trigger)
  * to avoid requiring Pusher client-event auth configuration.
  */
-export function useSessionSync({ channelName, hostName, onRemoteEvent }: UseSessionSyncOptions) {
+export function useSessionSync({ channelName, hostName, onRemoteEvent, existingChannel }: UseSessionSyncOptions) {
   const pusherRef = useRef<Pusher | null>(null);
+  const channelRef = useRef<ReturnType<Pusher['subscribe']> | null>(null);
   const onRemoteRef = useRef(onRemoteEvent);
   onRemoteRef.current = onRemoteEvent;
 
   useEffect(() => {
+    // If we already have a channel from PresenceProvider, just bind to it
+    if (existingChannel) {
+      channelRef.current = existingChannel;
+      existingChannel.bind('session-event', (data: PusherEvent) => {
+        onRemoteRef.current(data);
+      });
+      return () => {
+        existingChannel.unbind('session-event');
+      };
+    }
+
+    // Otherwise create our own Pusher connection
     const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
     const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
 
@@ -38,6 +55,7 @@ export function useSessionSync({ channelName, hostName, onRemoteEvent }: UseSess
     pusherRef.current = pusher;
 
     const channel = pusher.subscribe(`presence-${channelName}`);
+    channelRef.current = channel;
 
     channel.bind('session-event', (data: PusherEvent) => {
       onRemoteRef.current(data);
@@ -56,7 +74,7 @@ export function useSessionSync({ channelName, hostName, onRemoteEvent }: UseSess
       pusher.unsubscribe(`presence-${channelName}`);
       pusher.disconnect();
     };
-  }, [channelName, hostName]);
+  }, [channelName, hostName, existingChannel]);
 
   const sendEvent = useCallback(async (event: PusherEvent) => {
     try {
