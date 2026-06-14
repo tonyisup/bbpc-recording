@@ -92,6 +92,8 @@ export function DashboardHeader() {
     if (trimmed) {
       setHostName(trimmed);
       localStorage.setItem('bbpc-host-name', trimmed);
+      // Note: Pusher presence name only updates on reconnect.
+      // The new name will take effect on next page load.
     }
     setEditingName(false);
   }, []);

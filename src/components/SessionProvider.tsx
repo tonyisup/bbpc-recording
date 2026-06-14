@@ -194,10 +194,14 @@ export function SessionProvider({
   // Get the shared Pusher channel from PresenceProvider
   const { channel: existingChannel } = usePresence();
 
+  // Load persisted names from localStorage
+  const initialHostName = (typeof window !== 'undefined' && localStorage.getItem('bbpc-host-name')) || hostName;
+  const initialEpisode = (typeof window !== 'undefined' && localStorage.getItem('bbpc-episode-name')) || episode;
+
   const [state, rawDispatch] = useReducer(
     sessionReducer,
     null,
-    () => createInitialState(episode, date, hostName, sounders)
+    () => createInitialState(initialEpisode, date, initialHostName, sounders)
   );
 
   // Elapsed timer
