@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
+import { usePresence } from './PresenceProvider';
 import { useRecordingEngine } from '@/hooks/useRecordingEngine';
 import { useRecordingSync } from '@/hooks/useRecordingSync';
 
@@ -107,6 +108,8 @@ export function DashboardHeader() {
     }, 0);
   }, [hostName]);
 
+  const { channel: existingChannel } = usePresence();
+
   // Pusher recording sync
   const recordingStartRef = useRef<number>(0);
 
@@ -140,6 +143,7 @@ export function DashboardHeader() {
     hostName,
     onRemoteStart: handleRemoteStart,
     onRemoteStop: handleRemoteStop,
+    existingChannel,
   });
 
   const uploadTrack = useCallback(async (

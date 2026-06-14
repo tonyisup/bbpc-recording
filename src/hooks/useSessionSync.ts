@@ -17,8 +17,7 @@ interface UseSessionSyncOptions {
  * If `existingChannel` is provided (from PresenceProvider), reuses that connection
  * instead of creating a new one. This prevents duplicate presence entries.
  *
- * Events are relayed through /api/pusher/signal (server-side trigger)
- * to avoid requiring Pusher client-event auth configuration.
+ * Events are relayed through /api/pusher/signal (server-side trigger).
  */
 export function useSessionSync({ channelName, hostName, onRemoteEvent, existingChannel }: UseSessionSyncOptions) {
   const pusherRef = useRef<Pusher | null>(null);
@@ -47,6 +46,7 @@ export function useSessionSync({ channelName, hostName, onRemoteEvent, existingC
       return;
     }
 
+    console.log('[Pusher] Creating own connection for', channelName);
     const pusher = new Pusher(key, {
       cluster,
       authEndpoint: '/api/pusher/auth',
@@ -70,9 +70,11 @@ export function useSessionSync({ channelName, hostName, onRemoteEvent, existingC
     });
 
     return () => {
+      console.log('[Pusher] Cleaning up own connection for', channelName);
       channel.unbind_all();
       pusher.unsubscribe(`presence-${channelName}`);
       pusher.disconnect();
+      pusherRef.current = null;
     };
   }, [channelName, hostName, existingChannel]);
 

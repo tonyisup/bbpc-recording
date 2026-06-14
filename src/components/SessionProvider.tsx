@@ -222,7 +222,9 @@ export function SessionProvider({
   }, [state.isRecording, state.recordingStart]);
 
   // Pusher sync — use shared channel from PresenceProvider
-  const channel = channelName ?? episode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  // Derive channel from the localStorage-persisted episode name to stay in sync
+  // with other clients that may have renamed the episode
+  const channel = channelName ?? initialEpisode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
   const sessionIdRef = useRef(`sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 

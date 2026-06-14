@@ -306,6 +306,18 @@ export function FavoritesSidebar() {
             <div className={`w-2 h-2 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
           </div>
         </div>
+
+        {/* Channel info */}
+        <div className="px-3 pb-1">
+          <div className="flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
+            <span>Channel:</span>
+            <code className="text-[var(--accent)] bg-[var(--card-bg)] px-1 rounded">
+              presence-{state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-')}
+            </code>
+          </div>
+        </div>
+
+        {/* Member list */}
         <div className="px-3 pb-2 space-y-1">
           {members.length === 0 && (
             <p className="text-[10px] text-[var(--muted)]">No other hosts connected</p>
