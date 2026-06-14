@@ -62,6 +62,9 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
     case 'DELETE_SEGMENT':
       return { ...state, segments: state.segments.filter(seg => seg.id !== action.id) };
 
+    case 'UPDATE_EPISODE':
+      return { ...state, episode: action.episode };
+
     case 'RESET':
       return { ...createInitialState(state.episode, state.date, state.hostName, state.sounders) };
 

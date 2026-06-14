@@ -57,6 +57,36 @@ export function DashboardHeader() {
     return state.hostName;
   });
 
+  // Episode name — editable, persisted to localStorage
+  const [episodeName, setEpisodeName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('bbpc-episode-name') || state.episode;
+    }
+    return state.episode;
+  });
+  const [editingEpisode, setEditingEpisode] = useState(false);
+  const [episodeInput, setEpisodeInput] = useState('');
+  const episodeInputRef = useRef<HTMLInputElement>(null);
+
+  const saveEpisode = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      setEpisodeName(trimmed);
+      localStorage.setItem('bbpc-episode-name', trimmed);
+      dispatch({ type: 'UPDATE_EPISODE', episode: trimmed });
+    }
+    setEditingEpisode(false);
+  }, [dispatch]);
+
+  const startEpisodeEdit = useCallback(() => {
+    setEpisodeInput(episodeName);
+    setEditingEpisode(true);
+    setTimeout(() => {
+      episodeInputRef.current?.focus();
+      episodeInputRef.current?.select();
+    }, 0);
+  }, [episodeName]);
+
   const saveName = useCallback((name: string) => {
     const trimmed = name.trim();
     if (trimmed) {
@@ -104,7 +134,7 @@ export function DashboardHeader() {
   }, [recording]);
 
   const { broadcastStart, broadcastStop } = useRecordingSync({
-    channelName: state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    channelName: episodeName.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
     hostName,
     onRemoteStart: handleRemoteStart,
     onRemoteStop: handleRemoteStop,
@@ -181,8 +211,8 @@ export function DashboardHeader() {
     uploadStatusRef.current = 'uploading';
 
     const [micOk, sounderOk] = await Promise.all([
-      uploadTrack(state.episode, hostName, 'mic', tracks.mic, tracks.startedAt),
-      uploadTrack(state.episode, hostName, 'sounders', tracks.sounders, tracks.startedAt),
+      uploadTrack(episodeName, hostName, 'mic', tracks.mic, tracks.startedAt),
+        uploadTrack(episodeName, hostName, 'sounders', tracks.sounders, tracks.startedAt),
     ]);
 
     const finalStatus = micOk && sounderOk ? 'done' : 'error';
@@ -200,7 +230,33 @@ export function DashboardHeader() {
   return (
     <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
       <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold tracking-tight">{state.episode}</h1>
+        {/* Episode name — click to edit (only when not recording) */}
+        {editingEpisode ? (
+          <input
+            ref={episodeInputRef}
+            value={episodeInput}
+            onChange={e => setEpisodeInput(e.target.value)}
+            onBlur={() => saveEpisode(episodeInput)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') saveEpisode(episodeInput);
+              if (e.key === 'Escape') setEditingEpisode(false);
+            }}
+            className="text-lg font-semibold tracking-tight px-2 py-0.5 rounded border border-[var(--accent)] bg-[var(--card-bg)] text-[var(--foreground)] w-48 focus:outline-none"
+            placeholder="Episode title"
+          />
+        ) : (
+          <button
+            onClick={isRecording ? undefined : startEpisodeEdit}
+            className={`text-lg font-semibold tracking-tight px-2 py-0.5 rounded border transition-colors ${
+              isRecording
+                ? 'border-transparent cursor-default'
+                : 'border-transparent hover:border-[var(--card-border)] cursor-pointer hover:text-[var(--accent)]'
+            }`}
+            title={isRecording ? undefined : 'Click to edit episode title'}
+          >
+            {episodeName}
+          </button>
+        )}
         <span className="text-xs text-[var(--muted)]">{state.date}</span>
       </div>
 
