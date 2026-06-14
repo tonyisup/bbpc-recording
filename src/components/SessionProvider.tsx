@@ -113,6 +113,8 @@ function actionToPusherEvent(
       return { kind: 'segment-end', id: action.id, end_ms: action.end_ms, from: sessionId };
     case 'DELETE_SEGMENT':
       return { kind: 'segment-delete', id: action.id, from: sessionId };
+    case 'UPDATE_EPISODE':
+      return { kind: 'episode-update', episode: action.episode, from: sessionId };
     case 'ADD_EDIT_CUE':
       return { kind: 'edit-cue', cue: action.cue, from: sessionId };
     case 'UPDATE_EDIT_CUE':
@@ -142,6 +144,8 @@ function pusherEventToAction(event: PusherEvent): SessionAction | null {
       return { type: 'END_SEGMENT', id: event.id, end_ms: event.end_ms };
     case 'segment-delete':
       return { type: 'DELETE_SEGMENT', id: event.id };
+    case 'episode-update':
+      return { type: 'UPDATE_EPISODE', episode: event.episode };
     case 'edit-cue':
       return { type: 'ADD_EDIT_CUE', cue: event.cue };
     case 'edit-cue-update':

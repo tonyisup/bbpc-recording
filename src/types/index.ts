@@ -148,6 +148,12 @@ export interface PusherRecordingStopEvent {
   from?: string;
 }
 
+export interface PusherEpisodeUpdateEvent {
+  kind: 'episode-update';
+  episode: string;
+  from?: string;
+}
+
 // All Pusher events that affect session state
 export type PusherSessionEvent =
   | PusherSounderEvent
@@ -156,6 +162,7 @@ export type PusherSessionEvent =
   | PusherSegmentStartEvent
   | PusherSegmentEndEvent
   | PusherSegmentDeleteEvent
+  | PusherEpisodeUpdateEvent
   | PusherEditCueEvent
   | PusherEditCueUpdateEvent
   | PusherEditCueDeleteEvent;
