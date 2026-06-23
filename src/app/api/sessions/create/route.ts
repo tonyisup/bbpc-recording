@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { createSession } from '@/lib/sessions/file-store';
+import { createSession } from '@/lib/sessions/store';
 import {
   SESSION_GRANTS_COOKIE,
   readSessionGrantsFromCookieValue,
@@ -26,4 +26,3 @@ export async function GET(request: Request) {
 
   return response;
 }
-

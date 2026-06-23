@@ -50,23 +50,9 @@ export function DashboardHeader() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [micPermissionOk, setMicPermissionOk] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
-  const episodeStorageKey = `bbpc-episode-name-${sessionId}`;
 
-  // Load persisted host name
-  const [hostName, setHostName] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('bbpc-host-name') || state.hostName;
-    }
-    return state.hostName;
-  });
-
-  // Episode name — editable, persisted to localStorage
-  const [episodeName, setEpisodeName] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(episodeStorageKey) || state.episode;
-    }
-    return state.episode;
-  });
+  const hostName = state.hostName;
+  const episodeName = state.episode;
   const [editingEpisode, setEditingEpisode] = useState(false);
   const [episodeInput, setEpisodeInput] = useState('');
   const episodeInputRef = useRef<HTMLInputElement>(null);
@@ -74,12 +60,10 @@ export function DashboardHeader() {
   const saveEpisode = useCallback((name: string) => {
     const trimmed = name.trim();
     if (trimmed) {
-      setEpisodeName(trimmed);
-      localStorage.setItem(episodeStorageKey, trimmed);
       dispatch({ type: 'UPDATE_EPISODE', episode: trimmed });
     }
     setEditingEpisode(false);
-  }, [dispatch, episodeStorageKey]);
+  }, [dispatch]);
 
   const startEpisodeEdit = useCallback(() => {
     setEpisodeInput(episodeName);
@@ -93,13 +77,17 @@ export function DashboardHeader() {
   const saveName = useCallback((name: string) => {
     const trimmed = name.trim();
     if (trimmed) {
-      setHostName(trimmed);
-      localStorage.setItem('bbpc-host-name', trimmed);
-      // Note: Pusher presence name only updates on reconnect.
-      // The new name will take effect on next page load.
+      dispatch({ type: 'UPDATE_HOST_NAME', hostName: trimmed });
+      void fetch(`/api/sessions/${sessionId}/participant`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: trimmed }),
+      }).catch(err => {
+        console.error('[Session] Failed to update display name:', err);
+      });
     }
     setEditingName(false);
-  }, []);
+  }, [dispatch, sessionId]);
 
   const startNameEdit = useCallback(() => {
     setNameInput(hostName);

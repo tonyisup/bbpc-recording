@@ -1,7 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { DashboardApp } from '@/components/dashboard/DashboardApp';
-import { getParticipantForGrant, getSession } from '@/lib/sessions/file-store';
+import { getParticipantForGrant, getSession } from '@/lib/sessions/store';
 import { SESSION_GRANTS_COOKIE, readSessionGrantsFromCookieValue } from '@/lib/sessions/cookies';
 
 function getOrigin(headersList: Headers): string {
@@ -46,8 +46,8 @@ export default async function SessionPage({
       sessionId={session.id}
       inviteUrl={inviteUrl}
       episode={session.episode}
+      date={session.createdAt.slice(0, 10)}
       hostName={participant.displayName}
     />
   );
 }
-

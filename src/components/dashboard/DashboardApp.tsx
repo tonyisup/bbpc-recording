@@ -27,6 +27,7 @@ interface DashboardAppProps {
   sessionId: string;
   inviteUrl: string;
   episode: string;
+  date: string;
   hostName: string;
 }
 
@@ -74,7 +75,7 @@ function DashboardContent() {
   );
 }
 
-export function DashboardApp({ sessionId, inviteUrl, episode, hostName }: DashboardAppProps) {
+export function DashboardApp({ sessionId, inviteUrl, episode, date, hostName }: DashboardAppProps) {
   const channelName = toSessionChannelName(sessionId);
 
   return (
@@ -83,6 +84,7 @@ export function DashboardApp({ sessionId, inviteUrl, episode, hostName }: Dashbo
         sessionId={sessionId}
         inviteUrl={inviteUrl}
         episode={episode}
+        date={date}
         hostName={hostName}
         channelName={channelName}
       >

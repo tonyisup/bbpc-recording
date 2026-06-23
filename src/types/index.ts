@@ -74,6 +74,7 @@ export type SessionAction =
   | { type: 'DELETE_EDIT_CUE'; id: string }
   | { type: 'DELETE_SEGMENT'; id: string }
   | { type: 'UPDATE_EPISODE'; episode: string }
+  | { type: 'UPDATE_HOST_NAME'; hostName: string }
   | { type: 'RESET' }
 
 // --- Pusher Event Types ---

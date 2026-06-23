@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { joinSessionByInviteToken } from '@/lib/sessions/file-store';
+import { joinSessionByInviteToken } from '@/lib/sessions/store';
 import {
   SESSION_GRANTS_COOKIE,
   readSessionGrantsFromCookieValue,

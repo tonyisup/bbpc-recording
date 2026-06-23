@@ -66,8 +66,7 @@ export function serializeSessionGrantsCookie(grants: SessionAccessGrant[]): stri
   return attrs.join('; ');
 }
 
-export function readSessionGrantsFromRequest(req: IncomingMessage | NextApiRequest): SessionAccessGrant[] {
-  const rawCookie = req.headers.cookie;
+export function readSessionGrantsFromCookieHeader(rawCookie: string | undefined): SessionAccessGrant[] {
   if (!rawCookie) return [];
 
   const cookie = rawCookie
@@ -77,6 +76,10 @@ export function readSessionGrantsFromRequest(req: IncomingMessage | NextApiReque
 
   if (!cookie) return [];
   return decodeGrants(decodeURIComponent(cookie.slice(SESSION_GRANTS_COOKIE.length + 1)));
+}
+
+export function readSessionGrantsFromRequest(req: IncomingMessage | NextApiRequest): SessionAccessGrant[] {
+  return readSessionGrantsFromCookieHeader(req.headers.cookie);
 }
 
 export function writeSessionGrantCookie(

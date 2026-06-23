@@ -64,6 +64,9 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
     case 'UPDATE_EPISODE':
       return { ...state, episode: action.episode };
 
+    case 'UPDATE_HOST_NAME':
+      return { ...state, hostName: action.hostName };
+
     case 'RESET':
       return { ...createInitialState(state.episode, state.date, state.hostName, state.sounders) };
 
@@ -200,15 +203,10 @@ export function SessionProvider({
   // Get the shared Pusher channel from PresenceProvider
   const { channel: existingChannel } = usePresence();
 
-  // Load persisted names from localStorage
-  const initialHostName = (typeof window !== 'undefined' && localStorage.getItem('bbpc-host-name')) || hostName;
-  const episodeStorageKey = `bbpc-episode-name-${sessionId}`;
-  const initialEpisode = (typeof window !== 'undefined' && localStorage.getItem(episodeStorageKey)) || episode;
-
   const [state, rawDispatch] = useReducer(
     sessionReducer,
     null,
-    () => createInitialState(initialEpisode, date, initialHostName, sounders)
+    () => createInitialState(episode, date, hostName, sounders)
   );
 
   // Elapsed timer
@@ -228,10 +226,8 @@ export function SessionProvider({
     return () => cancelAnimationFrame(rafRef.current);
   }, [state.isRecording, state.recordingStart]);
 
-  // Pusher sync — use shared channel from PresenceProvider
-  // Derive channel from the localStorage-persisted episode name to stay in sync
-  // with other clients that may have renamed the episode
-  const channel = channelName ?? initialEpisode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  // Pusher sync — use the session-scoped channel, never the editable episode title.
+  const channel = channelName ?? episode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
   const reactId = useId();
   const sessionIdRef = useRef(`sess-${reactId}`);

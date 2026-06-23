@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { parseSessionIdFromChannel } from '@/lib/sessions/channel';
 import { readSessionGrantsFromRequest } from '@/lib/sessions/cookies';
-import { getParticipantForGrant, updateParticipantDisplayName } from '@/lib/sessions/file-store';
+import { getParticipantForGrant, updateParticipantDisplayName } from '@/lib/sessions/store';
 
 async function getPusher() {
   const appId = process.env.PUSHER_APP_ID;
