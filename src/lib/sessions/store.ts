@@ -130,8 +130,8 @@ export async function updateSessionEpisode(
   grant: SessionAccessGrant | undefined,
   episode: string,
 ): Promise<{ id: string; episode: string } | null> {
-  const canAccess = await hasSessionAccess(sessionId, grant);
-  if (!canAccess) return null;
+  const participant = await getParticipantForGrant(sessionId, grant);
+  if (!participant || participant.role !== 'owner') return null;
 
   return await fetchMutation(api.sessions.updateSessionEpisode, {
     publicId: sessionId,

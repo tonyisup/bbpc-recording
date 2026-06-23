@@ -311,7 +311,12 @@ export const appendSessionEvent = mutation({
   },
   handler: async (ctx, args) => {
     const session = await sessionByPublicId(ctx, args.publicId);
-    if (!session || session.status !== 'active') return null;
+    const payload = args.payload as { kind?: unknown };
+    const isTerminalRecordingEvent = (
+      payload.kind === 'recording-left'
+      || payload.kind === 'recording-stopped'
+    );
+    if (!session || (session.status !== 'active' && !isTerminalRecordingEvent)) return null;
 
     const existing = await ctx.db
       .query('sessionEvents')

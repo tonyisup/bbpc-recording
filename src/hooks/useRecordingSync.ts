@@ -52,7 +52,7 @@ export function useRecordingSync({
   ) => {
     if (participantRole !== 'owner') return;
 
-    sendEvent({
+    return sendEvent({
       kind: 'recording-started',
       startedAt,
       startedByRole: 'owner',
@@ -71,7 +71,7 @@ export function useRecordingSync({
   ) => {
     if (participantRole !== 'owner') return;
 
-    sendEvent({
+    return sendEvent({
       kind: 'recording-stopped',
       startedAt,
       durationMs,

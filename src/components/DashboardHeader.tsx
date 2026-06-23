@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
 import { useRecordingEngine } from '@/hooks/useRecordingEngine';
@@ -55,6 +55,8 @@ export function DashboardHeader() {
   const uploadStatusRef = useRef<'idle' | 'uploading' | 'done' | 'error'>('idle');
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
   const [endingSession, setEndingSession] = useState(false);
+  const endingSessionRef = useRef(false);
+  const forcedUploadRef = useRef(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -324,7 +326,7 @@ export function DashboardHeader() {
     recordingStartRef.current = 0;
 
     // Broadcast stop to guests
-    broadcastStop(recordingStartedAt, stoppedAt - recordingStartedAt, {
+    await broadcastStop(recordingStartedAt, stoppedAt - recordingStartedAt, {
       clientId: participantClientId,
       leftAt: stoppedAt,
     });
@@ -336,35 +338,51 @@ export function DashboardHeader() {
   const localRecordingActive = recording.state.isRecording;
   const isRecording = isOwner ? (hostRecordingActive || localRecordingActive) : localRecordingActive;
   const sessionEnded = sessionStatus === 'ended';
+  const canEditEpisode = isOwner && !sessionEnded && !hostRecordingActive;
   const guestCanJoinRecording = !isOwner && !sessionEnded && hostRecordingActive && !localRecordingActive;
-  const canEndSession = isOwner && !sessionEnded && !hostRecordingActive && !localRecordingActive;
+  const canEndSession = isOwner && !sessionEnded;
   const inviteButtonClassName = sessionEnded
     ? 'px-2 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] opacity-50 cursor-not-allowed transition-colors'
     : 'px-2 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors';
 
-  const handleEndSession = useCallback(async () => {
+  const handleEndSession = async () => {
     if (!canEndSession) return;
-    const confirmed = window.confirm('End this recording session? Invite links will stop working and participants will see the session as ended.');
+    const confirmed = window.confirm('End this recording session? Active recordings will be stopped and uploaded first.');
     if (!confirmed) return;
 
+    endingSessionRef.current = true;
     setEndingSession(true);
     stopAll();
 
     try {
+      if (hostRecordingActive || localRecordingActive) {
+        await handleStopRecording();
+      }
+
       const res = await fetch(`/api/sessions/${sessionId}/end`, { method: 'POST' });
       if (!res.ok) throw new Error(`End session failed: ${res.status}`);
     } catch (err) {
       console.error('[Session] Failed to end session:', err);
     } finally {
+      endingSessionRef.current = false;
       setEndingSession(false);
     }
-  }, [canEndSession, sessionId, stopAll]);
+  };
+
+  useEffect(() => {
+    if (!sessionEnded || !localRecordingActive || forcedUploadRef.current || endingSessionRef.current) return;
+    forcedUploadRef.current = true;
+
+    void leaveActiveRecording('host-stopped').finally(() => {
+      forcedUploadRef.current = false;
+    });
+  }, [leaveActiveRecording, localRecordingActive, sessionEnded]);
 
   return (
     <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
       <div className="flex items-center gap-4">
         {/* Episode name — click to edit (only when not recording) */}
-        {editingEpisode ? (
+        {editingEpisode && canEditEpisode ? (
           <input
             ref={episodeInputRef}
             value={episodeInput}
@@ -379,13 +397,13 @@ export function DashboardHeader() {
           />
         ) : (
           <button
-            onClick={isRecording ? undefined : startEpisodeEdit}
+            onClick={canEditEpisode ? startEpisodeEdit : undefined}
             className={`text-lg font-semibold tracking-tight px-2 py-0.5 rounded border transition-colors ${
-              isRecording
+              !canEditEpisode
                 ? 'border-transparent cursor-default'
                 : 'border-transparent hover:border-[var(--card-border)] cursor-pointer hover:text-[var(--accent)]'
             }`}
-            title={isRecording ? undefined : 'Click to edit episode title'}
+            title={canEditEpisode ? 'Click to edit episode title' : undefined}
           >
             {episodeName}
           </button>
@@ -522,7 +540,7 @@ export function DashboardHeader() {
                 ? 'border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--danger)] hover:border-[var(--danger)]'
                 : 'border-[var(--card-border)] text-[var(--muted)] opacity-50 cursor-not-allowed'
             }`}
-            title={isRecording ? 'Stop recording before ending the session' : 'End session'}
+            title={isRecording ? 'Stop, upload, and end session' : 'End session'}
           >
             {endingSession ? 'Ending...' : 'End Session'}
           </button>
