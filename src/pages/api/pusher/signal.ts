@@ -1,4 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { toSessionChannelName } from '@/lib/sessions/channel';
+import { readSessionGrantsFromRequest } from '@/lib/sessions/cookies';
+import { hasSessionAccess } from '@/lib/sessions/file-store';
 
 async function getPusher() {
   const appId = process.env.PUSHER_APP_ID;
@@ -17,13 +20,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { channelName, event } = req.body as {
-    channelName?: string;
+  const { sessionId, event } = req.body as {
+    sessionId?: string;
     event?: Record<string, unknown>;
   };
 
-  if (!channelName || !event) {
-    return res.status(400).json({ message: 'Missing channelName or event' });
+  if (!sessionId || !event) {
+    return res.status(400).json({ message: 'Missing sessionId or event' });
+  }
+
+  const grants = readSessionGrantsFromRequest(req);
+  const grant = grants.find(candidate => candidate.sessionId === sessionId);
+  const canAccess = await hasSessionAccess(sessionId, grant);
+
+  if (!canAccess) {
+    return res.status(403).json({ message: 'Session access denied' });
   }
 
   const pusher = await getPusher();
@@ -32,6 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const channelName = toSessionChannelName(sessionId);
     await pusher.trigger(`presence-${channelName}`, 'session-event', event);
     res.status(200).json({ ok: true });
   } catch (err) {

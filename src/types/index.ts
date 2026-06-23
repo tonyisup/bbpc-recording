@@ -33,6 +33,7 @@ export interface Segment {
 }
 
 export interface Manifest {
+  session_id?: string;
   episode: string;
   date: string;
   hosts: string[];

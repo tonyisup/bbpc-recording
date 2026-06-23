@@ -15,7 +15,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { episode, hostName, trackType, startedAt, audioBase64 } = req.body as {
+    const { sessionId, episode, hostName, trackType, startedAt, audioBase64 } = req.body as {
+      sessionId?: string;
       episode?: string;
       hostName?: string;
       trackType?: 'mic' | 'sounders';
@@ -45,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await containerClient.createIfNotExists({ access: 'blob' });
 
     const timestamp = new Date(startedAt).toISOString().replace(/[:.]/g, '-');
-    const blobName = `${episode}/${timestamp}/${hostName}-${trackType}.webm`;
+    const blobName = `${sessionId || episode}/${timestamp}/${hostName}-${trackType}.webm`;
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
     const audioBuffer = Buffer.from(audioBase64, 'base64');
@@ -61,6 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       blobHTTPHeaders: { blobContentType: 'audio/webm' },
       metadata: {
         episode,
+        sessionId: sessionId || '',
         hostName,
         trackType,
         startedAt: String(startedAt),

@@ -5,6 +5,7 @@ import Pusher from 'pusher-js';
 import type { PusherEvent } from '@/types';
 
 interface UseSessionSyncOptions {
+  sessionId: string;
   channelName: string;
   hostName: string;
   onRemoteEvent: (event: PusherEvent) => void;
@@ -19,11 +20,14 @@ interface UseSessionSyncOptions {
  *
  * Events are relayed through /api/pusher/signal (server-side trigger).
  */
-export function useSessionSync({ channelName, hostName, onRemoteEvent, existingChannel }: UseSessionSyncOptions) {
+export function useSessionSync({ sessionId, channelName, hostName, onRemoteEvent, existingChannel }: UseSessionSyncOptions) {
   const pusherRef = useRef<Pusher | null>(null);
   const channelRef = useRef<ReturnType<Pusher['subscribe']> | null>(null);
   const onRemoteRef = useRef(onRemoteEvent);
-  onRemoteRef.current = onRemoteEvent;
+
+  useEffect(() => {
+    onRemoteRef.current = onRemoteEvent;
+  }, [onRemoteEvent]);
 
   useEffect(() => {
     // If we already have a channel from PresenceProvider, just bind to it
@@ -83,12 +87,12 @@ export function useSessionSync({ channelName, hostName, onRemoteEvent, existingC
       await fetch('/api/pusher/signal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelName, event }),
+        body: JSON.stringify({ sessionId, event }),
       });
     } catch (err) {
       console.error('[Pusher] Failed to send event:', err);
     }
-  }, [channelName]);
+  }, [sessionId]);
 
   return { sendEvent };
 }

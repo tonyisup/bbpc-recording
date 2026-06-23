@@ -8,12 +8,11 @@ import {
   useRef,
   useState,
   useEffect,
-  type ReactNode,
+  useId,
 } from 'react';
 import { useSessionSync } from '@/hooks/useSessionSync';
 import { usePresence } from './PresenceProvider';
-import type { SessionState, SessionAction, Manifest, Sounder, SessionNote, Segment, EditCue, PusherEvent } from '@/types';
-import Pusher from 'pusher-js';
+import type { SessionState, SessionAction, Manifest, Sounder, PusherEvent } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Reducer
@@ -166,12 +165,17 @@ interface SessionContextValue {
   dispatch: React.Dispatch<SessionAction>;
   elapsedMs: number;
   toManifest: () => Manifest;
+  sessionId: string;
+  inviteUrl: string;
+  channelName: string;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
 interface SessionProviderProps {
   children: React.ReactNode;
+  sessionId: string;
+  inviteUrl: string;
   episode?: string;
   date?: string;
   hostName?: string;
@@ -185,6 +189,8 @@ interface SessionProviderProps {
 
 export function SessionProvider({
   children,
+  sessionId,
+  inviteUrl,
   episode = 'EP-NEW',
   date = new Date().toISOString().slice(0, 10),
   hostName = 'host',
@@ -196,7 +202,8 @@ export function SessionProvider({
 
   // Load persisted names from localStorage
   const initialHostName = (typeof window !== 'undefined' && localStorage.getItem('bbpc-host-name')) || hostName;
-  const initialEpisode = (typeof window !== 'undefined' && localStorage.getItem('bbpc-episode-name')) || episode;
+  const episodeStorageKey = `bbpc-episode-name-${sessionId}`;
+  const initialEpisode = (typeof window !== 'undefined' && localStorage.getItem(episodeStorageKey)) || episode;
 
   const [state, rawDispatch] = useReducer(
     sessionReducer,
@@ -226,7 +233,8 @@ export function SessionProvider({
   // with other clients that may have renamed the episode
   const channel = channelName ?? initialEpisode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
-  const sessionIdRef = useRef(`sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const reactId = useId();
+  const sessionIdRef = useRef(`sess-${reactId}`);
 
   const handleRemoteEvent = useCallback((event: PusherEvent) => {
     if (event.from === sessionIdRef.current) return;
@@ -235,6 +243,7 @@ export function SessionProvider({
   }, []);
 
   const { sendEvent } = useSessionSync({
+    sessionId,
     channelName: channel,
     hostName: state.hostName,
     onRemoteEvent: handleRemoteEvent,
@@ -252,6 +261,7 @@ export function SessionProvider({
     episode: state.episode,
     date: state.date,
     hosts: [state.hostName],
+    session_id: sessionId,
     recording_start: state.recordingStart,
     recording_end: state.isRecording ? null : (state.recordingStart ?? 0) + elapsedMs,
     manifest_version: '1.0',
@@ -259,10 +269,10 @@ export function SessionProvider({
     notes: state.notes,
     segments: state.segments,
     edit_cues: state.editCues,
-  }), [state, elapsedMs]);
+  }), [state, elapsedMs, sessionId]);
 
   return (
-    <SessionContext.Provider value={{ state, dispatch, elapsedMs, toManifest }}>
+    <SessionContext.Provider value={{ state, dispatch, elapsedMs, toManifest, sessionId, inviteUrl, channelName: channel }}>
       {children}
     </SessionContext.Provider>
   );

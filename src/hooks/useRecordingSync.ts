@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useId, useRef } from 'react';
 import { useSessionSync } from './useSessionSync';
 import type { PusherEvent } from '@/types';
 import type Pusher from 'pusher-js';
 
 interface RecordingSyncOptions {
+  sessionId: string;
   channelName: string;
   hostName: string;
   onRemoteStart: (startedAt: number) => void;
@@ -20,12 +21,14 @@ interface RecordingSyncOptions {
  */
 export function useRecordingSync({
   channelName,
+  sessionId,
   hostName,
   onRemoteStart,
   onRemoteStop,
   existingChannel,
 }: RecordingSyncOptions) {
-  const sessionIdRef = useRef(`rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const reactId = useId();
+  const sessionIdRef = useRef(`rec-${reactId}`);
 
   const handleRemoteEvent = useCallback((event: PusherEvent) => {
     if (event.kind === 'recording-started' && event.from !== sessionIdRef.current) {
@@ -37,6 +40,7 @@ export function useRecordingSync({
   }, [onRemoteStart, onRemoteStop]);
 
   const { sendEvent } = useSessionSync({
+    sessionId,
     channelName,
     hostName,
     onRemoteEvent: handleRemoteEvent,

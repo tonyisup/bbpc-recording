@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Create container if it doesn't exist
     await containerClient.createIfNotExists({ access: 'blob' });
 
-    const blobName = `${manifest.episode}/session-manifest.json`;
+    const blobName = `${manifest.session_id || manifest.episode}/session-manifest.json`;
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
     const json = JSON.stringify(manifest, null, 2);
@@ -36,6 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       blobHTTPHeaders: { blobContentType: 'application/json' },
       metadata: {
         episode: manifest.episode,
+        sessionId: manifest.session_id || '',
         date: manifest.date,
         hosts: manifest.hosts.join(','),
       },

@@ -40,7 +40,7 @@ function VUMeter({ level }: { level: number }) {
 }
 
 export function DashboardHeader() {
-  const { state, elapsedMs, dispatch } = useSession();
+  const { state, elapsedMs, dispatch, sessionId, inviteUrl, channelName } = useSession();
   const { stopAll } = useAudio();
   const recording = useRecordingEngine();
   const uploadStatusRef = useRef<'idle' | 'uploading' | 'done' | 'error'>('idle');
@@ -49,6 +49,8 @@ export function DashboardHeader() {
   const [nameInput, setNameInput] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [micPermissionOk, setMicPermissionOk] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const episodeStorageKey = `bbpc-episode-name-${sessionId}`;
 
   // Load persisted host name
   const [hostName, setHostName] = useState(() => {
@@ -61,7 +63,7 @@ export function DashboardHeader() {
   // Episode name — editable, persisted to localStorage
   const [episodeName, setEpisodeName] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('bbpc-episode-name') || state.episode;
+      return localStorage.getItem(episodeStorageKey) || state.episode;
     }
     return state.episode;
   });
@@ -73,11 +75,11 @@ export function DashboardHeader() {
     const trimmed = name.trim();
     if (trimmed) {
       setEpisodeName(trimmed);
-      localStorage.setItem('bbpc-episode-name', trimmed);
+      localStorage.setItem(episodeStorageKey, trimmed);
       dispatch({ type: 'UPDATE_EPISODE', episode: trimmed });
     }
     setEditingEpisode(false);
-  }, [dispatch]);
+  }, [dispatch, episodeStorageKey]);
 
   const startEpisodeEdit = useCallback(() => {
     setEpisodeInput(episodeName);
@@ -139,7 +141,8 @@ export function DashboardHeader() {
   }, [recording]);
 
   const { broadcastStart, broadcastStop } = useRecordingSync({
-    channelName: episodeName.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    sessionId,
+    channelName,
     hostName,
     onRemoteStart: handleRemoteStart,
     onRemoteStop: handleRemoteStop,
@@ -147,6 +150,7 @@ export function DashboardHeader() {
   });
 
   const uploadTrack = useCallback(async (
+    sessionId: string,
     episode: string,
     hostName: string,
     trackType: 'mic' | 'sounders',
@@ -169,7 +173,7 @@ export function DashboardHeader() {
       const res = await fetch('/api/recordings/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ episode, hostName, trackType, startedAt, audioBase64: base64 }),
+        body: JSON.stringify({ sessionId, episode, hostName, trackType, startedAt, audioBase64: base64 }),
       });
 
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
@@ -179,6 +183,16 @@ export function DashboardHeader() {
       return false;
     }
   }, []);
+
+  const copyInvite = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1800);
+    } catch (err) {
+      console.error('[Session] Failed to copy invite link:', err);
+    }
+  }, [inviteUrl]);
 
   // Unified start: session + audio recording + broadcast
   const handleStartRecording = async () => {
@@ -217,8 +231,8 @@ export function DashboardHeader() {
     uploadStatusRef.current = 'uploading';
 
     const [micOk, sounderOk] = await Promise.all([
-      uploadTrack(episodeName, hostName, 'mic', tracks.mic, tracks.startedAt),
-        uploadTrack(episodeName, hostName, 'sounders', tracks.sounders, tracks.startedAt),
+      uploadTrack(sessionId, episodeName, hostName, 'mic', tracks.mic, tracks.startedAt),
+      uploadTrack(sessionId, episodeName, hostName, 'sounders', tracks.sounders, tracks.startedAt),
     ]);
 
     const finalStatus = micOk && sounderOk ? 'done' : 'error';
@@ -296,6 +310,15 @@ export function DashboardHeader() {
             </span>
           )}
         </div>
+
+        {/* Sounder stop */}
+        <button
+          onClick={copyInvite}
+          className="px-2 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors"
+          title="Copy invite link"
+        >
+          {inviteCopied ? 'Copied' : 'Invite'}
+        </button>
 
         {/* Sounder stop */}
         <button
