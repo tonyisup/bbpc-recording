@@ -100,21 +100,21 @@ export function DashboardApp({
   return (
     <ConvexClientProvider>
       <PresenceProvider sessionId={sessionId}>
-        <SessionProvider
-          sessionId={sessionId}
-          inviteUrl={inviteUrl}
-          episode={episode}
-          date={date}
-          hostName={hostName}
-          participantClientId={participantClientId}
-          participantRole={participantRole}
-          initialStatus={initialStatus}
-          initialEndedAt={initialEndedAt}
-        >
-          <AudioProvider>
+        <AudioProvider>
+          <SessionProvider
+            sessionId={sessionId}
+            inviteUrl={inviteUrl}
+            episode={episode}
+            date={date}
+            hostName={hostName}
+            participantClientId={participantClientId}
+            participantRole={participantRole}
+            initialStatus={initialStatus}
+            initialEndedAt={initialEndedAt}
+          >
             <DashboardContent />
-          </AudioProvider>
-        </SessionProvider>
+          </SessionProvider>
+        </AudioProvider>
       </PresenceProvider>
     </ConvexClientProvider>
   );

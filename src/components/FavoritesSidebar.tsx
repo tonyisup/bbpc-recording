@@ -9,6 +9,42 @@ import type { Sounder as SounderItem } from '@/types';
 import { api } from '../../convex/_generated/api';
 
 const EMPTY_FAVORITES: SounderItem[] = [];
+const FAVORITES_STORAGE_KEY = 'bbpc-favorites-v1';
+
+function isStoredSounder(value: unknown): value is SounderItem {
+  if (!value || typeof value !== 'object') return false;
+  const sounder = value as Partial<SounderItem>;
+
+  return (
+    typeof sounder.id === 'string' &&
+    typeof sounder.name === 'string' &&
+    typeof sounder.category === 'string' &&
+    typeof sounder.duration === 'number' &&
+    typeof sounder.url === 'string'
+  );
+}
+
+function readStoredFavorites(): SounderItem[] {
+  try {
+    const raw = window.localStorage.getItem(FAVORITES_STORAGE_KEY);
+    if (!raw) return EMPTY_FAVORITES;
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return EMPTY_FAVORITES;
+
+    return parsed.filter(isStoredSounder);
+  } catch {
+    return EMPTY_FAVORITES;
+  }
+}
+
+function writeStoredFavorites(favorites: SounderItem[]) {
+  try {
+    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
+  } catch {
+    // Persistence is a convenience layer; Convex remains the source of truth.
+  }
+}
 
 export function FavoritesSidebar() {
   const { dispatch, sessionId, sessionStatus } = useSession();
@@ -26,10 +62,13 @@ export function FavoritesSidebar() {
   const [renameText, setRenameText] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
   const saveSequenceRef = useRef(0);
+  const localFavoritesSeededRef = useRef(false);
   const favorites = optimisticFavorites ?? savedFavorites ?? EMPTY_FAVORITES;
   const sessionEnded = sessionStatus === 'ended';
 
   const saveFavorites = useCallback((next: SounderItem[]) => {
+    writeStoredFavorites(next);
+
     const saveSequence = saveSequenceRef.current + 1;
     saveSequenceRef.current = saveSequence;
     void replaceFavorites({
@@ -52,6 +91,24 @@ export function FavoritesSidebar() {
     setOptimisticFavorites(next);
     saveFavorites(next);
   }, [favorites, saveFavorites, sessionEnded]);
+
+  useEffect(() => {
+    if (savedFavorites === undefined) return;
+
+    if (savedFavorites.length > 0) {
+      localFavoritesSeededRef.current = true;
+      writeStoredFavorites(savedFavorites);
+      return;
+    }
+
+    if (localFavoritesSeededRef.current || sessionEnded) return;
+
+    localFavoritesSeededRef.current = true;
+    const storedFavorites = readStoredFavorites();
+    if (storedFavorites.length === 0) return;
+
+    void saveFavorites(storedFavorites);
+  }, [saveFavorites, savedFavorites, sessionEnded]);
 
   // Focus rename input when entering rename mode
   useEffect(() => {

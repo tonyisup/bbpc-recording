@@ -15,6 +15,25 @@ function formatElapsed(ms: number): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
+const DISPLAY_NAME_STORAGE_KEY = 'bbpc-display-name-v1';
+
+function readStoredDisplayName(): string | null {
+  try {
+    const storedName = window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)?.trim();
+    return storedName || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDisplayName(name: string) {
+  try {
+    window.localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, name);
+  } catch {
+    // The server-side participant record remains authoritative.
+  }
+}
+
 function VUMeter({ level }: { level: number }) {
   const bars = 8;
   const activeBars = Math.round(level * bars);
@@ -60,6 +79,7 @@ export function DashboardHeader() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const storedNameAppliedRef = useRef(false);
   const [micPermissionOk, setMicPermissionOk] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
 
@@ -96,6 +116,7 @@ export function DashboardHeader() {
   const saveName = useCallback((name: string) => {
     const trimmed = name.trim();
     if (trimmed) {
+      writeStoredDisplayName(trimmed);
       dispatch({ type: 'UPDATE_HOST_NAME', hostName: trimmed });
       void fetch(`/api/sessions/${sessionId}/participant`, {
         method: 'PATCH',
@@ -116,6 +137,16 @@ export function DashboardHeader() {
       nameInputRef.current?.select();
     }, 0);
   }, [hostName]);
+
+  useEffect(() => {
+    if (storedNameAppliedRef.current || sessionStatus === 'ended') return;
+
+    storedNameAppliedRef.current = true;
+    const storedName = readStoredDisplayName();
+    if (!storedName || storedName === hostName) return;
+
+    queueMicrotask(() => saveName(storedName));
+  }, [hostName, saveName, sessionStatus]);
 
   // Realtime recording sync
   const recordingStartRef = useRef<number>(0);

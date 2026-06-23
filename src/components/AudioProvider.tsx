@@ -3,7 +3,7 @@
 import { createContext, useContext, useCallback, useRef } from 'react';
 
 interface AudioManager {
-  play: (url: string) => HTMLAudioElement;
+  play: (url: string, options?: { record?: boolean }) => HTMLAudioElement;
   stopAll: () => void;
   setSounderDestination: (dest: MediaStreamAudioDestinationNode | null) => void;
 }
@@ -26,18 +26,19 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     return audioCtxRef.current;
   }, []);
 
-  const play = useCallback((url: string): HTMLAudioElement => {
+  const play = useCallback((url: string, options: { record?: boolean } = {}): HTMLAudioElement => {
     const audio = new Audio();
     audio.preload = 'auto';
     audio.src = url;
     activeRef.current.add(audio);
 
     // Route to sounder destination if recording
-    if (sounderDestRef.current) {
+    if (sounderDestRef.current && options.record !== false) {
       try {
         const ctx = getAudioContext();
         const source = ctx.createMediaElementSource(audio);
         source.connect(sounderDestRef.current);
+        source.connect(ctx.destination);
       } catch {
         // If already connected or CORS issue, just play normally
       }

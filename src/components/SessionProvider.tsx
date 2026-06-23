@@ -14,6 +14,7 @@ import { useQuery } from 'convex/react';
 import { useSessionSync } from '@/hooks/useSessionSync';
 import type { SessionState, SessionAction, Manifest, Sounder, SessionSyncEvent } from '@/types';
 import type { SessionRole, SessionStatus } from '@/lib/sessions/types';
+import { useAudio } from './AudioProvider';
 import {
   actionToSyncEvent,
   createInitialState,
@@ -73,6 +74,7 @@ export function SessionProvider({
   initialEndedAt = null,
   sounders = [],
 }: SessionProviderProps) {
+  const { play } = useAudio();
   const [state, rawDispatch] = useReducer(
     sessionReducer,
     null,
@@ -105,9 +107,15 @@ export function SessionProvider({
     if (action) rawDispatch(action);
   }, []);
 
+  const handleLiveRemoteEvent = useCallback((event: SessionSyncEvent) => {
+    if (event.from === sessionIdRef.current || event.kind !== 'sounder') return;
+    play(event.sounder.url, { record: false });
+  }, [play]);
+
   const { sendEvent } = useSessionSync({
     sessionId,
     onRemoteEvent: handleRemoteEvent,
+    onLiveRemoteEvent: handleLiveRemoteEvent,
   });
   const lifecycle = useQuery(api.sessions.getSessionLifecycle, { publicId: sessionId });
   const sessionStatus = lifecycle?.status ?? initialStatus;
