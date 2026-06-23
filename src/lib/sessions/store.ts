@@ -139,3 +139,15 @@ export async function updateSessionEpisode(
   });
 }
 
+export async function endSession(
+  sessionId: string,
+  grant: SessionAccessGrant | undefined,
+): Promise<{ id: string; status: 'ended'; endedAt: string | null } | null> {
+  const participant = await getParticipantForGrant(sessionId, grant);
+  if (!participant || participant.role !== 'owner') return null;
+
+  return await fetchMutation(api.sessions.endSession, {
+    publicId: sessionId,
+    endedAt: Date.now(),
+  });
+}

@@ -13,6 +13,7 @@ import { EditCuePanel } from '@/components/EditCuePanel';
 import { SegmentPanel } from '@/components/SegmentPanel';
 import { ExportBar } from '@/components/ExportBar';
 import { useSession } from '@/components/SessionProvider';
+import type { SessionRole, SessionStatus } from '@/lib/sessions/types';
 
 type Tab = 'sounders' | 'notes' | 'edit' | 'segments';
 
@@ -29,15 +30,25 @@ interface DashboardAppProps {
   episode: string;
   date: string;
   hostName: string;
+  participantClientId: string;
+  participantRole: SessionRole;
+  initialStatus: SessionStatus;
+  initialEndedAt: string | null;
 }
 
 function DashboardContent() {
   const [activeTab, setActiveTab] = useState<Tab>('sounders');
-  const { toManifest } = useSession();
+  const { toManifest, sessionStatus, endedAt } = useSession();
+  const sessionEnded = sessionStatus === 'ended';
 
   return (
     <div className="flex flex-col h-screen">
       <DashboardHeader />
+      {sessionEnded && (
+        <div className="px-6 py-2 border-b border-[var(--warning)]/30 bg-[var(--warning)]/10 text-xs text-[var(--warning)]">
+          Session ended{endedAt ? ` at ${endedAt.replace('T', ' ').slice(0, 19)} UTC` : ''}. Export remains available.
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-56 shrink-0 border-r border-[var(--card-border)] overflow-hidden hidden lg:flex flex-col bg-[var(--card-bg)]">
@@ -75,7 +86,17 @@ function DashboardContent() {
   );
 }
 
-export function DashboardApp({ sessionId, inviteUrl, episode, date, hostName }: DashboardAppProps) {
+export function DashboardApp({
+  sessionId,
+  inviteUrl,
+  episode,
+  date,
+  hostName,
+  participantClientId,
+  participantRole,
+  initialStatus,
+  initialEndedAt,
+}: DashboardAppProps) {
   return (
     <ConvexClientProvider>
       <PresenceProvider sessionId={sessionId}>
@@ -85,6 +106,10 @@ export function DashboardApp({ sessionId, inviteUrl, episode, date, hostName }: 
           episode={episode}
           date={date}
           hostName={hostName}
+          participantClientId={participantClientId}
+          participantRole={participantRole}
+          initialStatus={initialStatus}
+          initialEndedAt={initialEndedAt}
         >
           <AudioProvider>
             <DashboardContent />

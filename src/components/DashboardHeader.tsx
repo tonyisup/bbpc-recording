@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
 import { useRecordingEngine } from '@/hooks/useRecordingEngine';
+import type { RecordingTracks } from '@/hooks/useRecordingEngine';
 import { useRecordingSync } from '@/hooks/useRecordingSync';
 
 function formatElapsed(ms: number): string {
@@ -39,11 +40,21 @@ function VUMeter({ level }: { level: number }) {
 }
 
 export function DashboardHeader() {
-  const { state, elapsedMs, dispatch, sessionId, inviteUrl } = useSession();
+  const {
+    state,
+    elapsedMs,
+    dispatch,
+    sessionId,
+    inviteUrl,
+    participantClientId,
+    participantRole,
+    sessionStatus,
+  } = useSession();
   const { stopAll } = useAudio();
   const recording = useRecordingEngine();
   const uploadStatusRef = useRef<'idle' | 'uploading' | 'done' | 'error'>('idle');
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  const [endingSession, setEndingSession] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -106,37 +117,7 @@ export function DashboardHeader() {
 
   // Realtime recording sync
   const recordingStartRef = useRef<number>(0);
-
-  const handleRemoteStart = useCallback(async (startedAt: number) => {
-    console.log('[Recording] Remote host started recording at', startedAt);
-    // Auto-start local recording to stay in sync
-    if (!recording.state.isRecording) {
-      try {
-        await recording.startRecording();
-        recordingStartRef.current = startedAt;
-      } catch (err) {
-        console.error('[Recording] Failed to auto-start:', err);
-      }
-    }
-  }, [recording]);
-
-  const handleRemoteStop = useCallback(async (startedAt: number, durationMs: number) => {
-    console.log('[Recording] Remote host stopped recording', { startedAt, durationMs });
-    // Auto-stop local recording
-    if (recording.state.isRecording) {
-      try {
-        await recording.stopRecording();
-      } catch (err) {
-        console.error('[Recording] Failed to auto-stop:', err);
-      }
-    }
-  }, [recording]);
-
-  const { broadcastStart, broadcastStop } = useRecordingSync({
-    sessionId,
-    onRemoteStart: handleRemoteStart,
-    onRemoteStop: handleRemoteStop,
-  });
+  const isOwner = participantRole === 'owner';
 
   const uploadTrack = useCallback(async (
     sessionId: string,
@@ -173,49 +154,7 @@ export function DashboardHeader() {
     }
   }, []);
 
-  const copyInvite = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setInviteCopied(true);
-      setTimeout(() => setInviteCopied(false), 1800);
-    } catch (err) {
-      console.error('[Session] Failed to copy invite link:', err);
-    }
-  }, [inviteUrl]);
-
-  // Unified start: session + audio recording + broadcast
-  const handleStartRecording = async () => {
-    // Request mic permission first
-    const hasPermission = await recording.requestMicPermission();
-    if (!hasPermission) return;
-    setMicPermissionOk(true);
-
-    const now = Date.now();
-    recordingStartRef.current = now;
-
-    // Start session recording (timeline for notes/cues/segments)
-    dispatch({ type: 'START_RECORDING' });
-
-    // Start WebRTC audio recording (mic + sounders)
-    await recording.startRecording();
-
-    // Broadcast to all hosts
-    broadcastStart(now);
-  };
-
-  // Unified stop: session + audio recording + broadcast + upload
-  const handleStopRecording = async () => {
-    // Stop session recording
-    dispatch({ type: 'STOP_RECORDING' });
-
-    // Stop WebRTC audio recording
-    const tracks = await recording.stopRecording();
-    recordingStartRef.current = 0;
-
-    // Broadcast stop to other hosts
-    broadcastStop(tracks.startedAt, tracks.durationMs);
-
-    // Upload both tracks
+  const uploadTracks = useCallback(async (tracks: RecordingTracks) => {
     setUploadStatus('uploading');
     uploadStatusRef.current = 'uploading';
 
@@ -232,9 +171,194 @@ export function DashboardHeader() {
       setUploadStatus('idle');
       uploadStatusRef.current = 'idle';
     }, 3000);
+
+    return finalStatus === 'done';
+  }, [episodeName, hostName, sessionId, uploadTrack]);
+
+  const dispatchRecordingJoin = useCallback((recordingStartedAt: number, joinedAt: number) => {
+    dispatch({
+      type: 'JOIN_RECORDING',
+      participant: {
+        clientId: participantClientId,
+        name: hostName,
+        role: participantRole,
+        joinedAt,
+        recordingStartedAt,
+      },
+    });
+  }, [dispatch, hostName, participantClientId, participantRole]);
+
+  const dispatchRecordingLeave = useCallback((
+    recordingStartedAt: number,
+    leftAt: number,
+    reason: 'left' | 'host-stopped',
+  ) => {
+    dispatch({
+      type: 'LEAVE_RECORDING',
+      participant: {
+        clientId: participantClientId,
+        leftAt,
+        recordingStartedAt,
+        reason,
+      },
+    });
+  }, [dispatch, participantClientId]);
+
+  const joinActiveRecording = useCallback(async (recordingStartedAt: number) => {
+    if (sessionStatus === 'ended' || recording.state.isRecording) return;
+
+    const hasPermission = await recording.requestMicPermission();
+    if (!hasPermission) return;
+    setMicPermissionOk(true);
+
+    try {
+      await recording.startRecording();
+      recordingStartRef.current = recordingStartedAt;
+      dispatchRecordingJoin(recordingStartedAt, Date.now());
+    } catch (err) {
+      console.error('[Recording] Failed to join recording:', err);
+    }
+  }, [dispatchRecordingJoin, recording, sessionStatus]);
+
+  const leaveActiveRecording = useCallback(async (reason: 'left' | 'host-stopped') => {
+    const recordingStartedAt = recordingStartRef.current || state.recordingStart;
+    if (!recordingStartedAt || !recording.state.isRecording) return;
+
+    const leftAt = Date.now();
+    dispatchRecordingLeave(recordingStartedAt, leftAt, reason);
+
+    const tracks = await recording.stopRecording();
+    recordingStartRef.current = reason === 'host-stopped' ? 0 : recordingStartedAt;
+    await uploadTracks(tracks);
+  }, [dispatchRecordingLeave, recording, state.recordingStart, uploadTracks]);
+
+  const handleRemoteStart = useCallback(async (startedAt: number) => {
+    console.log('[Recording] Remote host started recording at', startedAt);
+    recordingStartRef.current = startedAt;
+    if (!isOwner) {
+      await joinActiveRecording(startedAt);
+    }
+  }, [isOwner, joinActiveRecording]);
+
+  const handleRemoteStop = useCallback(async (startedAt: number, durationMs: number) => {
+    console.log('[Recording] Remote host stopped recording', { startedAt, durationMs });
+    if (!isOwner && recording.state.isRecording) {
+      await leaveActiveRecording('host-stopped');
+    }
+    recordingStartRef.current = 0;
+  }, [isOwner, leaveActiveRecording, recording.state.isRecording]);
+
+  const { broadcastStart, broadcastStop } = useRecordingSync({
+    sessionId,
+    participantRole,
+    onRemoteStart: handleRemoteStart,
+    onRemoteStop: handleRemoteStop,
+  });
+
+  const copyInvite = useCallback(async () => {
+    if (sessionStatus === 'ended') return;
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1800);
+    } catch (err) {
+      console.error('[Session] Failed to copy invite link:', err);
+    }
+  }, [inviteUrl, sessionStatus]);
+
+  // Unified start: session + audio recording + broadcast
+  const handleStartRecording = async () => {
+    if (!isOwner || sessionStatus === 'ended') return;
+
+    // Request mic permission first
+    const hasPermission = await recording.requestMicPermission();
+    if (!hasPermission) return;
+    setMicPermissionOk(true);
+
+    const now = Date.now();
+    recordingStartRef.current = now;
+
+    // Start session recording (timeline for notes/cues/segments)
+    dispatch({
+      type: 'START_RECORDING',
+      startedAt: now,
+      participant: {
+        clientId: participantClientId,
+        name: hostName,
+        role: 'owner',
+        joinedAt: now,
+      },
+    });
+
+    // Start WebRTC audio recording (mic + sounders)
+    await recording.startRecording();
+
+    // Broadcast to guests
+    broadcastStart(now, {
+      clientId: participantClientId,
+      name: hostName,
+      joinedAt: now,
+    });
   };
 
-  const isRecording = state.isRecording || recording.state.isRecording;
+  // Unified stop: session + audio recording + broadcast + upload
+  const handleStopRecording = async () => {
+    if (!isOwner) return;
+    const recordingStartedAt = recordingStartRef.current || state.recordingStart || Date.now();
+    const stoppedAt = Date.now();
+
+    // Stop session recording
+    dispatch({
+      type: 'STOP_RECORDING',
+      participant: {
+        clientId: participantClientId,
+        leftAt: stoppedAt,
+        recordingStartedAt,
+        reason: 'host-stopped',
+      },
+    });
+
+    // Stop WebRTC audio recording
+    const tracks = await recording.stopRecording();
+    recordingStartRef.current = 0;
+
+    // Broadcast stop to guests
+    broadcastStop(recordingStartedAt, stoppedAt - recordingStartedAt, {
+      clientId: participantClientId,
+      leftAt: stoppedAt,
+    });
+
+    await uploadTracks(tracks);
+  };
+
+  const hostRecordingActive = state.isRecording;
+  const localRecordingActive = recording.state.isRecording;
+  const isRecording = isOwner ? (hostRecordingActive || localRecordingActive) : localRecordingActive;
+  const sessionEnded = sessionStatus === 'ended';
+  const guestCanJoinRecording = !isOwner && !sessionEnded && hostRecordingActive && !localRecordingActive;
+  const canEndSession = isOwner && !sessionEnded && !hostRecordingActive && !localRecordingActive;
+  const inviteButtonClassName = sessionEnded
+    ? 'px-2 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] opacity-50 cursor-not-allowed transition-colors'
+    : 'px-2 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors';
+
+  const handleEndSession = useCallback(async () => {
+    if (!canEndSession) return;
+    const confirmed = window.confirm('End this recording session? Invite links will stop working and participants will see the session as ended.');
+    if (!confirmed) return;
+
+    setEndingSession(true);
+    stopAll();
+
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/end`, { method: 'POST' });
+      if (!res.ok) throw new Error(`End session failed: ${res.status}`);
+    } catch (err) {
+      console.error('[Session] Failed to end session:', err);
+    } finally {
+      setEndingSession(false);
+    }
+  }, [canEndSession, sessionId, stopAll]);
 
   return (
     <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
@@ -303,8 +427,9 @@ export function DashboardHeader() {
         {/* Sounder stop */}
         <button
           onClick={copyInvite}
-          className="px-2 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)] transition-colors"
-          title="Copy invite link"
+          disabled={sessionEnded}
+          className={inviteButtonClassName}
+          title={sessionEnded ? 'Session ended' : 'Copy invite link'}
         >
           {inviteCopied ? 'Copied' : 'Invite'}
         </button>
@@ -347,20 +472,59 @@ export function DashboardHeader() {
           {isRecording ? formatElapsed(elapsedMs) : '--:--:--'}
         </div>
 
-        {/* Unified Start/Stop Recording */}
-        {isRecording ? (
+	        {/* Recording controls */}
+        {sessionEnded ? (
+          <span className="px-3 py-1.5 text-xs font-medium rounded border border-[var(--warning)]/40 text-[var(--warning)]">
+            Ended
+          </span>
+        ) : isOwner && isRecording ? (
           <button
             onClick={handleStopRecording}
             className="px-3 py-1.5 text-xs font-medium rounded bg-[var(--danger)] text-white hover:opacity-90 transition-opacity"
           >
             Stop Recording
           </button>
-        ) : (
+        ) : isOwner ? (
           <button
             onClick={handleStartRecording}
             className="px-3 py-1.5 text-xs font-medium rounded bg-[var(--success)] text-white hover:opacity-90 transition-opacity"
           >
             Start Recording
+          </button>
+        ) : localRecordingActive ? (
+          <button
+            onClick={() => void leaveActiveRecording('left')}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-[var(--danger)] text-white hover:opacity-90 transition-opacity"
+          >
+            Leave Recording
+          </button>
+        ) : guestCanJoinRecording ? (
+          <button
+            onClick={() => {
+              const recordingStartedAt = recordingStartRef.current || state.recordingStart;
+              if (recordingStartedAt) void joinActiveRecording(recordingStartedAt);
+            }}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-[var(--success)] text-white hover:opacity-90 transition-opacity"
+          >
+            Join Recording
+          </button>
+        ) : (
+          <span className="px-3 py-1.5 text-xs font-medium rounded border border-[var(--card-border)] text-[var(--muted)]">
+            Waiting for Host
+          </span>
+        )}
+        {participantRole === 'owner' && !sessionEnded && (
+          <button
+            onClick={handleEndSession}
+            disabled={!canEndSession || endingSession}
+            className={`px-2 py-1.5 text-xs font-medium rounded border transition-colors ${
+              canEndSession && !endingSession
+                ? 'border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--danger)] hover:border-[var(--danger)]'
+                : 'border-[var(--card-border)] text-[var(--muted)] opacity-50 cursor-not-allowed'
+            }`}
+            title={isRecording ? 'Stop recording before ending the session' : 'End session'}
+          >
+            {endingSession ? 'Ending...' : 'End Session'}
           </button>
         )}
       </div>

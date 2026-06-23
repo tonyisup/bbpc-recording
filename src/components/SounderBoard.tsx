@@ -14,7 +14,7 @@ interface SounderFromApi {
 }
 
 export function SounderBoard() {
-  const { dispatch } = useSession();
+  const { dispatch, sessionStatus } = useSession();
   const { play } = useAudio();
   const [apiSounders, setApiSounders] = useState<SounderFromApi[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +80,8 @@ export function SounderBoard() {
   }, [filteredSounders]);
 
   const handleTrigger = useCallback((sounder: SounderFromApi) => {
+    if (sessionStatus === 'ended') return;
+
     setPlayingId(sounder.id);
     const audio = play(sounder.url);
     audio.addEventListener('ended', () => {
@@ -95,7 +97,7 @@ export function SounderBoard() {
         url: sounder.url,
       },
     });
-  }, [dispatch, play]);
+  }, [dispatch, play, sessionStatus]);
 
   if (loading) {
     return (

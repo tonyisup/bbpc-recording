@@ -14,19 +14,109 @@ export function createInitialState(
     isRecording: false,
     sounders,
     soundersUsed: [],
+    recordingParticipants: [],
     notes: [],
     segments: [],
     editCues: [],
   };
 }
 
+function msSince(recordingStartedAt: number, timestamp: number): number {
+  return Math.max(0, timestamp - recordingStartedAt);
+}
+
+function upsertRecordingJoin(
+  state: SessionState,
+  participant: {
+    clientId: string;
+    name: string;
+    role: 'owner' | 'participant';
+    joinedAt: number;
+    recordingStartedAt: number;
+  },
+): SessionState {
+  const interval = {
+    client_id: participant.clientId,
+    name: participant.name,
+    role: participant.role,
+    joined_at_ms: msSince(participant.recordingStartedAt, participant.joinedAt),
+    joined_at_epoch_ms: participant.joinedAt,
+    left_at_ms: null,
+    left_at_epoch_ms: null,
+  };
+
+  const existingOpenIndex = state.recordingParticipants.findIndex(existing => (
+    existing.client_id === participant.clientId && existing.left_at_epoch_ms === null
+  ));
+
+  if (existingOpenIndex >= 0) {
+    return {
+      ...state,
+      recordingParticipants: state.recordingParticipants.map((existing, index) => (
+        index === existingOpenIndex ? { ...existing, ...interval } : existing
+      )),
+    };
+  }
+
+  return {
+    ...state,
+    recordingParticipants: [...state.recordingParticipants, interval],
+  };
+}
+
+function applyRecordingLeave(
+  state: SessionState,
+  participant: {
+    clientId: string;
+    leftAt: number;
+    recordingStartedAt: number;
+    reason?: 'left' | 'host-stopped';
+  },
+): SessionState {
+  const existingOpenIndex = state.recordingParticipants.findIndex(existing => (
+    existing.client_id === participant.clientId && existing.left_at_epoch_ms === null
+  ));
+
+  if (existingOpenIndex < 0) return state;
+
+  return {
+    ...state,
+    recordingParticipants: state.recordingParticipants.map((existing, index) => (
+      index === existingOpenIndex
+        ? {
+            ...existing,
+            left_at_ms: msSince(participant.recordingStartedAt, participant.leftAt),
+            left_at_epoch_ms: participant.leftAt,
+            leave_reason: participant.reason,
+          }
+        : existing
+    )),
+  };
+}
+
 export function sessionReducer(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
-    case 'START_RECORDING':
-      return { ...state, isRecording: true, recordingStart: Date.now() };
+    case 'START_RECORDING': {
+      const startedAt = action.startedAt ?? Date.now();
+      const nextState = { ...state, isRecording: true, recordingStart: startedAt };
+      if (!action.participant) return nextState;
 
-    case 'STOP_RECORDING':
-      return { ...state, isRecording: false };
+      return upsertRecordingJoin(nextState, {
+        ...action.participant,
+        recordingStartedAt: startedAt,
+      });
+    }
+
+    case 'STOP_RECORDING': {
+      const nextState = { ...state, isRecording: false };
+      return action.participant ? applyRecordingLeave(nextState, action.participant) : nextState;
+    }
+
+    case 'JOIN_RECORDING':
+      return upsertRecordingJoin(state, action.participant);
+
+    case 'LEAVE_RECORDING':
+      return applyRecordingLeave(state, action.participant);
 
     case 'TRIGGER_SOUNDER': {
       const playedAt = action.played_at_ms ?? (state.recordingStart != null ? Date.now() - state.recordingStart : 0);
@@ -113,6 +203,10 @@ export function actionToSyncEvent(
       return { kind: 'note', note: action.note, from: clientEventSourceId };
     case 'DELETE_NOTE':
       return { kind: 'note-delete', id: action.id, from: clientEventSourceId };
+    case 'JOIN_RECORDING':
+      return { kind: 'recording-joined', participant: action.participant, from: clientEventSourceId };
+    case 'LEAVE_RECORDING':
+      return { kind: 'recording-left', participant: action.participant, from: clientEventSourceId };
     case 'START_SEGMENT':
       return { kind: 'segment-start', segment: action.segment, from: clientEventSourceId };
     case 'END_SEGMENT':
@@ -145,6 +239,28 @@ export function syncEventToAction(event: SessionSyncEvent): SessionAction | null
       return { type: 'ADD_NOTE', note: event.note };
     case 'note-delete':
       return { type: 'DELETE_NOTE', id: event.id };
+    case 'recording-started':
+      return {
+        type: 'START_RECORDING',
+        startedAt: event.startedAt,
+        participant: event.participant,
+      };
+    case 'recording-stopped':
+      return {
+        type: 'STOP_RECORDING',
+        participant: event.participant
+          ? {
+              clientId: event.participant.clientId,
+              leftAt: event.participant.leftAt,
+              recordingStartedAt: event.startedAt,
+              reason: event.participant.reason,
+            }
+          : undefined,
+      };
+    case 'recording-joined':
+      return { type: 'JOIN_RECORDING', participant: event.participant };
+    case 'recording-left':
+      return { type: 'LEAVE_RECORDING', participant: event.participant };
     case 'segment-start':
       return { type: 'START_SEGMENT', segment: event.segment };
     case 'segment-end':
@@ -187,10 +303,10 @@ export function sessionStateToManifest(
     recording_start: state.recordingStart,
     recording_end: state.isRecording ? null : (state.recordingStart ?? 0) + elapsedMs,
     manifest_version: '1.0',
+    recording_participants: state.recordingParticipants,
     sounders_used: state.soundersUsed,
     notes: state.notes,
     segments: state.segments,
     edit_cues: state.editCues,
   };
 }
-

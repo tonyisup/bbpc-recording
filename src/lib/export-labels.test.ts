@@ -8,6 +8,8 @@ import type { Manifest } from '@/types';
 // ---------------------------------------------------------------------------
 
 function baseManifest(overrides: Partial<Manifest> = {}): Manifest {
+  const recordingParticipants = overrides.recording_participants ?? [];
+
   return {
     episode: 'EP-2026-01',
     date: '2026-01-15',
@@ -20,6 +22,7 @@ function baseManifest(overrides: Partial<Manifest> = {}): Manifest {
     segments: [],
     edit_cues: [],
     ...overrides,
+    recording_participants: recordingParticipants,
   };
 }
 
@@ -144,6 +147,7 @@ describe('manifestToAudacityLabels', () => {
       recording_start: 0,
       recording_end: 7200000,
       manifest_version: '1.0',
+      recording_participants: [],
       sounders_used: [
         { id: 'theme-intro', name: 'Theme Song Intro', played_at_ms: 10000, played_by: 'tony' },
         { id: 'laugh-01', name: 'Laugh 01', played_at_ms: 45230, played_by: 'fonso' },

@@ -10,8 +10,10 @@ import {
   useEffect,
   useId,
 } from 'react';
+import { useQuery } from 'convex/react';
 import { useSessionSync } from '@/hooks/useSessionSync';
 import type { SessionState, SessionAction, Manifest, Sounder, SessionSyncEvent } from '@/types';
+import type { SessionRole, SessionStatus } from '@/lib/sessions/types';
 import {
   actionToSyncEvent,
   createInitialState,
@@ -19,6 +21,7 @@ import {
   sessionStateToManifest,
   syncEventToAction,
 } from '@/lib/session-state';
+import { api } from '../../convex/_generated/api';
 
 // ---------------------------------------------------------------------------
 // Context
@@ -31,6 +34,10 @@ interface SessionContextValue {
   toManifest: () => Manifest;
   sessionId: string;
   inviteUrl: string;
+  participantClientId: string;
+  participantRole: SessionRole;
+  sessionStatus: SessionStatus;
+  endedAt: string | null;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -42,6 +49,10 @@ interface SessionProviderProps {
   episode?: string;
   date?: string;
   hostName?: string;
+  participantClientId: string;
+  participantRole: SessionRole;
+  initialStatus: SessionStatus;
+  initialEndedAt?: string | null;
   sounders?: Sounder[];
 }
 
@@ -56,6 +67,10 @@ export function SessionProvider({
   episode = 'EP-NEW',
   date = new Date().toISOString().slice(0, 10),
   hostName = 'host',
+  participantClientId,
+  participantRole,
+  initialStatus,
+  initialEndedAt = null,
   sounders = [],
 }: SessionProviderProps) {
   const [state, rawDispatch] = useReducer(
@@ -94,13 +109,18 @@ export function SessionProvider({
     sessionId,
     onRemoteEvent: handleRemoteEvent,
   });
+  const lifecycle = useQuery(api.sessions.getSessionLifecycle, { publicId: sessionId });
+  const sessionStatus = lifecycle?.status ?? initialStatus;
+  const endedAt = lifecycle?.endedAt ?? initialEndedAt;
 
   // Wrapped dispatch: local + broadcast
   const dispatch = useCallback((action: SessionAction) => {
+    if (sessionStatus === 'ended' && action.type !== 'UPDATE_HOST_NAME') return;
+
     rawDispatch(action);
     const event = actionToSyncEvent(action, state.hostName, state.recordingStart, sessionIdRef.current);
     if (event) sendEvent(event);
-  }, [rawDispatch, sendEvent, state.hostName, state.recordingStart]);
+  }, [rawDispatch, sendEvent, sessionStatus, state.hostName, state.recordingStart]);
 
   const toManifest = useCallback(
     (): Manifest => sessionStateToManifest(state, sessionId, elapsedMs),
@@ -108,7 +128,20 @@ export function SessionProvider({
   );
 
   return (
-    <SessionContext.Provider value={{ state, dispatch, elapsedMs, toManifest, sessionId, inviteUrl }}>
+    <SessionContext.Provider
+      value={{
+        state,
+        dispatch,
+        elapsedMs,
+        toManifest,
+        sessionId,
+        inviteUrl,
+        participantClientId,
+        participantRole,
+        sessionStatus,
+        endedAt,
+      }}
+    >
       {children}
     </SessionContext.Provider>
   );

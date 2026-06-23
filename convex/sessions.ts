@@ -72,6 +72,7 @@ export const createSession = mutation({
       inviteToken: args.inviteToken,
       episode: args.episode,
       createdAt: new Date(args.createdAt).toISOString(),
+      endedAt: null,
       status: 'active' as const,
       participants: [{
         ...args.participant,
@@ -104,6 +105,7 @@ export const getSession = query({
       inviteToken: invite?.token ?? '',
       episode: session.episode,
       createdAt: new Date(session.createdAt).toISOString(),
+      endedAt: session.endedAt ? new Date(session.endedAt).toISOString() : null,
       status: session.status,
       participants: participants.map(participant => ({
         clientId: participant.clientId,
@@ -112,6 +114,24 @@ export const getSession = query({
         role: participant.role,
         joinedAt: new Date(participant.joinedAt).toISOString(),
       })),
+    };
+	},
+});
+
+export const getSessionLifecycle = query({
+  args: {
+    publicId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await sessionByPublicId(ctx, args.publicId);
+    if (!session) return null;
+
+    return {
+      id: session.publicId,
+      episode: session.episode,
+      status: session.status,
+      createdAt: new Date(session.createdAt).toISOString(),
+      endedAt: session.endedAt ? new Date(session.endedAt).toISOString() : null,
     };
   },
 });
@@ -154,6 +174,7 @@ export const joinSessionByInviteToken = mutation({
       inviteToken: invite.token,
       episode: session.episode,
       createdAt: new Date(session.createdAt).toISOString(),
+      endedAt: session.endedAt ? new Date(session.endedAt).toISOString() : null,
       status: session.status,
       participants: participants.map(participant => ({
         clientId: participant.clientId,
@@ -216,7 +237,7 @@ export const updateSessionEpisode = mutation({
   },
   handler: async (ctx, args) => {
     const session = await sessionByPublicId(ctx, args.publicId);
-    if (!session) return null;
+    if (!session || session.status !== 'active') return null;
 
     await ctx.db.patch(session._id, { episode: args.episode });
 
@@ -225,6 +246,40 @@ export const updateSessionEpisode = mutation({
       episode: args.episode,
       status: session.status,
       createdAt: new Date(session.createdAt).toISOString(),
+    };
+	},
+});
+
+export const endSession = mutation({
+  args: {
+    publicId: v.string(),
+    endedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const session = await sessionByPublicId(ctx, args.publicId);
+    if (!session) return null;
+
+    if (session.status === 'ended') {
+      return {
+        id: session.publicId,
+        episode: session.episode,
+        status: session.status,
+        createdAt: new Date(session.createdAt).toISOString(),
+        endedAt: session.endedAt ? new Date(session.endedAt).toISOString() : null,
+      };
+    }
+
+    await ctx.db.patch(session._id, {
+      status: 'ended',
+      endedAt: args.endedAt,
+    });
+
+    return {
+      id: session.publicId,
+      episode: session.episode,
+      status: 'ended' as const,
+      createdAt: new Date(session.createdAt).toISOString(),
+      endedAt: new Date(args.endedAt).toISOString(),
     };
   },
 });
@@ -255,6 +310,9 @@ export const appendSessionEvent = mutation({
     payload: v.any(),
   },
   handler: async (ctx, args) => {
+    const session = await sessionByPublicId(ctx, args.publicId);
+    if (!session || session.status !== 'active') return null;
+
     const existing = await ctx.db
       .query('sessionEvents')
       .withIndex('by_event_id', q => q.eq('eventId', args.eventId))
@@ -290,5 +348,90 @@ export const listSessionEvents = query({
         createdAt: event.createdAt,
         payload: event.payload,
       }));
+	},
+});
+
+async function deleteByPublicSessionId(
+  ctx: MutationCtx,
+  table: 'sessionInvites' | 'participants' | 'sessionEvents' | 'sessionManifests' | 'sessionFavorites' | 'recordingUploads',
+  publicSessionId: string,
+) {
+  const docs = await ctx.db
+    .query(table)
+    .withIndex('by_public_session_id', q => q.eq('publicSessionId', publicSessionId))
+    .collect();
+
+  for (const doc of docs) {
+    await ctx.db.delete(doc._id);
+  }
+
+  return docs.length;
+}
+
+export const cleanupEndedSessions = mutation({
+  args: {
+    olderThan: v.number(),
+    limit: v.optional(v.number()),
+    confirmation: v.literal('delete-ended-sessions'),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 10, 1), 100);
+    const sessions = await ctx.db
+      .query('sessions')
+      .withIndex('by_status_created_at', q => (
+        q
+          .eq('status', 'ended')
+          .lt('createdAt', args.olderThan)
+      ))
+      .take(limit);
+
+    const deleted = {
+      sessions: 0,
+      invites: 0,
+      participants: 0,
+      events: 0,
+      manifests: 0,
+      favorites: 0,
+      recordings: 0,
+    };
+
+    for (const session of sessions) {
+      deleted.invites += await deleteByPublicSessionId(ctx, 'sessionInvites', session.publicId);
+      deleted.participants += await deleteByPublicSessionId(ctx, 'participants', session.publicId);
+      deleted.events += await deleteByPublicSessionId(ctx, 'sessionEvents', session.publicId);
+      deleted.manifests += await deleteByPublicSessionId(ctx, 'sessionManifests', session.publicId);
+      deleted.favorites += await deleteByPublicSessionId(ctx, 'sessionFavorites', session.publicId);
+      deleted.recordings += await deleteByPublicSessionId(ctx, 'recordingUploads', session.publicId);
+      await ctx.db.delete(session._id);
+      deleted.sessions += 1;
+    }
+
+    return deleted;
+  },
+});
+
+export const deleteSessionData = mutation({
+  args: {
+    publicId: v.string(),
+    confirmation: v.literal('delete-session-data'),
+  },
+  handler: async (ctx, args) => {
+    const session = await sessionByPublicId(ctx, args.publicId);
+    if (!session) return null;
+
+    const deleted = {
+      sessions: 0,
+      invites: await deleteByPublicSessionId(ctx, 'sessionInvites', args.publicId),
+      participants: await deleteByPublicSessionId(ctx, 'participants', args.publicId),
+      events: await deleteByPublicSessionId(ctx, 'sessionEvents', args.publicId),
+      manifests: await deleteByPublicSessionId(ctx, 'sessionManifests', args.publicId),
+      favorites: await deleteByPublicSessionId(ctx, 'sessionFavorites', args.publicId),
+      recordings: await deleteByPublicSessionId(ctx, 'recordingUploads', args.publicId),
+    };
+
+    await ctx.db.delete(session._id);
+    deleted.sessions = 1;
+
+    return deleted;
   },
 });

@@ -14,6 +14,7 @@ export interface RecordingSession {
   inviteToken: string;
   episode: string;
   createdAt: string;
+  endedAt?: string | null;
   status: SessionStatus;
   participants: SessionParticipant[];
 }
@@ -34,4 +35,3 @@ export interface JoinSessionResult {
   participant: SessionParticipant;
   grant: SessionAccessGrant;
 }
-

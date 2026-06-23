@@ -41,6 +41,17 @@ export interface SegmentTemplate {
   sortOrder?: number;
 }
 
+export interface RecordingParticipantInterval {
+  client_id: string;
+  name: string;
+  role: 'owner' | 'participant';
+  joined_at_ms: number;
+  joined_at_epoch_ms: number;
+  left_at_ms: number | null;
+  left_at_epoch_ms: number | null;
+  leave_reason?: 'left' | 'host-stopped';
+}
+
 export interface Manifest {
   session_id?: string;
   episode: string;
@@ -49,6 +60,7 @@ export interface Manifest {
   recording_start: number | null;
   recording_end: number | null;
   manifest_version: '1.0';
+  recording_participants: RecordingParticipantInterval[];
   sounders_used: Array<{ id: string; name: string; played_at_ms: number; played_by: string }>;
   notes: SessionNote[];
   segments: Segment[];
@@ -65,14 +77,51 @@ export interface SessionState {
   isRecording: boolean;
   sounders: Sounder[];
   soundersUsed: Manifest['sounders_used'];
+  recordingParticipants: RecordingParticipantInterval[];
   notes: SessionNote[];
   segments: Segment[];
   editCues: EditCue[];
 }
 
 export type SessionAction =
-  | { type: 'START_RECORDING' }
-  | { type: 'STOP_RECORDING' }
+  | {
+      type: 'START_RECORDING';
+      startedAt?: number;
+      participant?: {
+        clientId: string;
+        name: string;
+        role: 'owner' | 'participant';
+        joinedAt: number;
+      };
+    }
+  | {
+      type: 'STOP_RECORDING';
+      participant?: {
+        clientId: string;
+        leftAt: number;
+        recordingStartedAt: number;
+        reason: 'host-stopped';
+      };
+    }
+  | {
+      type: 'JOIN_RECORDING';
+      participant: {
+        clientId: string;
+        name: string;
+        role: 'owner' | 'participant';
+        joinedAt: number;
+        recordingStartedAt: number;
+      };
+    }
+  | {
+      type: 'LEAVE_RECORDING';
+      participant: {
+        clientId: string;
+        leftAt: number;
+        recordingStartedAt: number;
+        reason?: 'left' | 'host-stopped';
+      };
+    }
   | { type: 'TRIGGER_SOUNDER'; sounder: Sounder; played_at_ms?: number; played_by?: string }
   | { type: 'ADD_NOTE'; note: SessionNote }
   | { type: 'DELETE_NOTE'; id: string }
@@ -149,6 +198,13 @@ export interface SessionSyncSegmentDeleteEvent {
 export interface SessionSyncRecordingStartEvent {
   kind: 'recording-started';
   startedAt: number;
+  startedByRole?: 'owner';
+  participant?: {
+    clientId: string;
+    name: string;
+    role: 'owner';
+    joinedAt: number;
+  };
   from?: string;
 }
 
@@ -156,6 +212,35 @@ export interface SessionSyncRecordingStopEvent {
   kind: 'recording-stopped';
   startedAt: number;
   durationMs: number;
+  stoppedByRole?: 'owner';
+  participant?: {
+    clientId: string;
+    leftAt: number;
+    reason: 'host-stopped';
+  };
+  from?: string;
+}
+
+export interface SessionSyncRecordingJoinEvent {
+  kind: 'recording-joined';
+  participant: {
+    clientId: string;
+    name: string;
+    role: 'owner' | 'participant';
+    joinedAt: number;
+    recordingStartedAt: number;
+  };
+  from?: string;
+}
+
+export interface SessionSyncRecordingLeaveEvent {
+  kind: 'recording-left';
+  participant: {
+    clientId: string;
+    leftAt: number;
+    recordingStartedAt: number;
+    reason?: 'left' | 'host-stopped';
+  };
   from?: string;
 }
 
@@ -168,6 +253,8 @@ export interface SessionSyncEpisodeUpdateEvent {
 // All events that affect session state
 export type SessionSyncStateEvent =
   | SessionSyncSounderEvent
+  | SessionSyncRecordingJoinEvent
+  | SessionSyncRecordingLeaveEvent
   | SessionSyncNoteEvent
   | SessionSyncNoteDeleteEvent
   | SessionSyncSegmentStartEvent

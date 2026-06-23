@@ -7,7 +7,10 @@ export default defineSchema({
     episode: v.string(),
     status: v.union(v.literal('active'), v.literal('ended')),
     createdAt: v.number(),
-  }).index('by_public_id', ['publicId']),
+    endedAt: v.optional(v.number()),
+  })
+    .index('by_public_id', ['publicId'])
+    .index('by_status_created_at', ['status', 'createdAt']),
 
   sessionInvites: defineTable({
     token: v.string(),

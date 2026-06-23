@@ -11,7 +11,7 @@ import { api } from '../../convex/_generated/api';
 const EMPTY_FAVORITES: SounderItem[] = [];
 
 export function FavoritesSidebar() {
-  const { dispatch, sessionId } = useSession();
+  const { dispatch, sessionId, sessionStatus } = useSession();
   const { play } = useAudio();
   const { members, connected, resetConnections } = usePresence();
   const savedFavorites = useQuery(api.favorites.list, { publicSessionId: sessionId });
@@ -27,6 +27,7 @@ export function FavoritesSidebar() {
   const renameInputRef = useRef<HTMLInputElement>(null);
   const saveSequenceRef = useRef(0);
   const favorites = optimisticFavorites ?? savedFavorites ?? EMPTY_FAVORITES;
+  const sessionEnded = sessionStatus === 'ended';
 
   const saveFavorites = useCallback((next: SounderItem[]) => {
     const saveSequence = saveSequenceRef.current + 1;
@@ -45,10 +46,12 @@ export function FavoritesSidebar() {
   }, [replaceFavorites, sessionId]);
 
   const updateFavorites = useCallback((updater: (current: SounderItem[]) => SounderItem[]) => {
+    if (sessionEnded) return;
+
     const next = updater(favorites);
     setOptimisticFavorites(next);
     saveFavorites(next);
-  }, [favorites, saveFavorites]);
+  }, [favorites, saveFavorites, sessionEnded]);
 
   // Focus rename input when entering rename mode
   useEffect(() => {
@@ -60,12 +63,13 @@ export function FavoritesSidebar() {
 
   // --- Play ---
   const handleTrigger = useCallback((s: SounderItem) => {
+    if (sessionEnded) return;
     if (editMode) return;
     setPlayingId(s.id);
     const audio = play(s.url);
     audio.addEventListener('ended', () => { setPlayingId(null); });
     dispatch({ type: 'TRIGGER_SOUNDER', sounder: { id: s.id, name: s.name, category: s.category, duration: s.duration, url: s.url } });
-  }, [dispatch, editMode, play]);
+  }, [dispatch, editMode, play, sessionEnded]);
 
   // --- Remove ---
   const handleRemove = useCallback((id: string) => {
@@ -172,7 +176,7 @@ export function FavoritesSidebar() {
           )}
         </h2>
         <div className="flex items-center gap-1.5">
-          {favorites.length > 0 && !editMode && (
+          {favorites.length > 0 && !editMode && !sessionEnded && (
             <button
               onClick={() => setEditMode(true)}
               className="text-[10px] text-[var(--muted)] hover:text-[var(--accent)] transition-colors px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--card-border)]"
@@ -189,7 +193,7 @@ export function FavoritesSidebar() {
               Done
             </button>
           )}
-          {favorites.length > 0 && !editMode && (
+          {favorites.length > 0 && !editMode && !sessionEnded && (
             <button
               onClick={handleClear}
               className="text-[10px] text-[var(--muted)] hover:text-[var(--danger)] transition-colors"

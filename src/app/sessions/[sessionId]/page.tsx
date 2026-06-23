@@ -48,6 +48,10 @@ export default async function SessionPage({
       episode={session.episode}
       date={session.createdAt.slice(0, 10)}
       hostName={participant.displayName}
+      participantClientId={participant.clientId}
+      participantRole={participant.role}
+      initialStatus={session.status}
+      initialEndedAt={session.endedAt ?? null}
     />
   );
 }

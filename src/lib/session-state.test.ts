@@ -78,9 +78,117 @@ describe('session event replay', () => {
     assert.equal(state.editCues.length, 0);
   });
 
-  it('does not apply recording transport events to session state', () => {
-    assert.equal(syncEventToAction({ kind: 'recording-started', startedAt: 123 }), null);
-    assert.equal(syncEventToAction({ kind: 'recording-stopped', startedAt: 123, durationMs: 456 }), null);
+  it('applies recording transport events to session state for manifest replay', () => {
+    assert.deepEqual(syncEventToAction({
+      kind: 'recording-started',
+      startedAt: 1000,
+      startedByRole: 'owner',
+      participant: {
+        clientId: 'host-1',
+        name: 'Host',
+        role: 'owner',
+        joinedAt: 1000,
+      },
+    }), {
+      type: 'START_RECORDING',
+      startedAt: 1000,
+      participant: {
+        clientId: 'host-1',
+        name: 'Host',
+        role: 'owner',
+        joinedAt: 1000,
+      },
+    });
+    assert.deepEqual(syncEventToAction({
+      kind: 'recording-stopped',
+      startedAt: 1000,
+      durationMs: 456,
+      stoppedByRole: 'owner',
+      participant: {
+        clientId: 'host-1',
+        leftAt: 1456,
+        reason: 'host-stopped',
+      },
+    }), {
+      type: 'STOP_RECORDING',
+      participant: {
+        clientId: 'host-1',
+        leftAt: 1456,
+        recordingStartedAt: 1000,
+        reason: 'host-stopped',
+      },
+    });
+  });
+
+  it('replays recording participant join and leave intervals', () => {
+    const initial = createInitialState('EP', '2026-06-23', 'Harley');
+    const state = applySessionSyncEvents(initial, [
+      {
+        kind: 'recording-started',
+        startedAt: 1000,
+        startedByRole: 'owner',
+        participant: {
+          clientId: 'host-1',
+          name: 'Host',
+          role: 'owner',
+          joinedAt: 1000,
+        },
+      },
+      {
+        kind: 'recording-joined',
+        participant: {
+          clientId: 'guest-1',
+          name: 'Guest',
+          role: 'participant',
+          joinedAt: 2500,
+          recordingStartedAt: 1000,
+        },
+      },
+      {
+        kind: 'recording-left',
+        participant: {
+          clientId: 'guest-1',
+          leftAt: 5500,
+          recordingStartedAt: 1000,
+          reason: 'left',
+        },
+      },
+      {
+        kind: 'recording-stopped',
+        startedAt: 1000,
+        durationMs: 6000,
+        stoppedByRole: 'owner',
+        participant: {
+          clientId: 'host-1',
+          leftAt: 7000,
+          reason: 'host-stopped',
+        },
+      },
+    ]);
+
+    assert.equal(state.isRecording, false);
+    assert.deepEqual(state.recordingParticipants, [
+      {
+        client_id: 'host-1',
+        name: 'Host',
+        role: 'owner',
+        joined_at_ms: 0,
+        joined_at_epoch_ms: 1000,
+        left_at_ms: 6000,
+        left_at_epoch_ms: 7000,
+        leave_reason: 'host-stopped',
+      },
+      {
+        client_id: 'guest-1',
+        name: 'Guest',
+        role: 'participant',
+        joined_at_ms: 1500,
+        joined_at_epoch_ms: 2500,
+        left_at_ms: 4500,
+        left_at_epoch_ms: 5500,
+        leave_reason: 'left',
+      },
+    ]);
   });
 
   it('preserves explicit sounder timestamps when reducing an action', () => {
@@ -96,4 +204,3 @@ describe('session event replay', () => {
     assert.equal(state.soundersUsed[0].played_by, 'Tony');
   });
 });
-
