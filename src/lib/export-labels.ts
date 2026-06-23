@@ -1,4 +1,4 @@
-import type { Manifest } from '@/types';
+import type { Manifest, RecordingUploadMetadata, SessionMergeBundle, SounderAsset } from '@/types';
 
 /**
  * Convert a session manifest to Audacity label track format.
@@ -65,6 +65,43 @@ export function downloadLabels(manifest: Manifest): void {
   const labels = manifestToAudacityLabels(manifest);
   const blob = new Blob([labels], { type: 'text/plain' });
   triggerDownload(blob, `${manifest.episode}-labels.txt`);
+}
+
+export function downloadSessionMergeBundle(
+  manifest: Manifest,
+  recordings: RecordingUploadMetadata[],
+  sounderAssets: SounderAsset[],
+): SessionMergeBundle {
+  if (!manifest.session_id) {
+    throw new Error('Manifest is missing session_id');
+  }
+
+  const labels = manifestToAudacityLabels(manifest);
+  const labelsFilename = `${manifest.episode}-labels.txt`;
+  const bundle: SessionMergeBundle = {
+    bundle_version: '1.0',
+    generated_at: new Date().toISOString(),
+    session_id: manifest.session_id,
+    episode: manifest.episode,
+    manifest,
+    labels: {
+      format: 'audacity',
+      filename: labelsFilename,
+      text: labels,
+    },
+    recordings,
+    sounder_assets: sounderAssets,
+    merge_notes: [
+      'Download each recordings[].url before merging.',
+      'Download each sounder_assets[].downloadUrl for sounder reconstruction.',
+      'Align each recording with manifest.recording_participants and recordings[].startedAt.',
+      'Use labels.text as the Audacity label track contents.',
+    ],
+  };
+
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+  triggerDownload(blob, `${manifest.episode}-merge-bundle.json`);
+  return bundle;
 }
 
 function triggerDownload(blob: Blob, filename: string): void {

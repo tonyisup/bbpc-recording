@@ -8,6 +8,18 @@ export interface Sounder {
   url: string;
 }
 
+export interface SounderAsset {
+  id: string;
+  blobName: string;
+  name: string;
+  category: string;
+  url: string;
+  downloadUrl: string;
+  duration: number;
+  size: number;
+  contentType: string;
+}
+
 export interface EditCue {
   id: string;
   start_ms: number;
@@ -52,6 +64,20 @@ export interface RecordingParticipantInterval {
   leave_reason?: 'left' | 'host-stopped';
 }
 
+export interface RecordingUploadMetadata {
+  id: string;
+  publicSessionId?: string;
+  episode: string;
+  hostName: string;
+  trackType: 'mic' | 'sounders';
+  startedAt: number;
+  blobName: string;
+  url: string;
+  size: number;
+  contentType: string;
+  uploadedAt: number;
+}
+
 export interface Manifest {
   session_id?: string;
   episode: string;
@@ -65,6 +91,22 @@ export interface Manifest {
   notes: SessionNote[];
   segments: Segment[];
   edit_cues: EditCue[];
+}
+
+export interface SessionMergeBundle {
+  bundle_version: '1.0';
+  generated_at: string;
+  session_id: string;
+  episode: string;
+  manifest: Manifest;
+  labels: {
+    format: 'audacity';
+    filename: string;
+    text: string;
+  };
+  recordings: RecordingUploadMetadata[];
+  sounder_assets: SounderAsset[];
+  merge_notes: string[];
 }
 
 // --- Session State (runtime, in-memory) ---
