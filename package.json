@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "seed:segment-templates": "node scripts/seed-segment-templates.mjs",
-    "cleanup:ended-sessions": "node scripts/cleanup-ended-sessions.mjs"
+    "cleanup:ended-sessions": "node scripts/cleanup-ended-sessions.mjs",
+    "merge-session": "node scripts/merge-session-bundle.mjs"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.32.0",

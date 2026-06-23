@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BBPC Recording
 
-## Getting Started
+Browser-based podcast recording for one host plus invited guests. Session state and metadata are stored in Convex; audio blobs stay in Azure storage.
 
-First, run the development server:
+## Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Useful commands:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm test
+npm run build
+npm run seed:segment-templates
+npm run cleanup:ended-sessions -- --days=30 --limit=25
+```
 
-## Learn More
+## Merge Bundle Workflow
 
-To learn more about Next.js, take a look at the following resources:
+After a recording session, use the app's `Download Merge Bundle` button. The bundle includes the manifest, Audacity labels, uploaded recording URLs, participant join/leave intervals, and sounder asset URLs.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+To merge locally:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run merge-session -- --bundle ./EP-merge-bundle.json --out ./merged/EP
+```
 
-## Deploy on Vercel
+Options:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run merge-session -- --help
+npm run merge-session -- --bundle ./EP-merge-bundle.json --format=mp3
+npm run merge-session -- --bundle ./EP-merge-bundle.json --sounders=reconstruct
+npm run merge-session -- --bundle ./EP-merge-bundle.json --dry-run
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Sounder modes:
+
+- `auto`: use uploaded sounder tracks if present, otherwise reconstruct from sounder asset URLs.
+- `recorded`: use uploaded sounder tracks only.
+- `reconstruct`: download sounder assets and place them using manifest timestamps.
+- `both`: include uploaded sounder tracks and reconstructed sounders.
+- `none`: mix participant mic tracks only.
+
+The merge script requires `ffmpeg` on your PATH. Sounder asset URLs point at the app's `/api/sounders/play` route, so keep the app running when using `--sounders=reconstruct` unless those URLs are replaced with direct blob URLs.
