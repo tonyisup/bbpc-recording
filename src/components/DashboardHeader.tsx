@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
-import { usePresence } from './PresenceProvider';
 import { useRecordingEngine } from '@/hooks/useRecordingEngine';
 import { useRecordingSync } from '@/hooks/useRecordingSync';
 
@@ -40,7 +39,7 @@ function VUMeter({ level }: { level: number }) {
 }
 
 export function DashboardHeader() {
-  const { state, elapsedMs, dispatch, sessionId, inviteUrl, channelName } = useSession();
+  const { state, elapsedMs, dispatch, sessionId, inviteUrl } = useSession();
   const { stopAll } = useAudio();
   const recording = useRecordingEngine();
   const uploadStatusRef = useRef<'idle' | 'uploading' | 'done' | 'error'>('idle');
@@ -61,9 +60,16 @@ export function DashboardHeader() {
     const trimmed = name.trim();
     if (trimmed) {
       dispatch({ type: 'UPDATE_EPISODE', episode: trimmed });
+      void fetch(`/api/sessions/${sessionId}/episode`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episode: trimmed }),
+      }).catch(err => {
+        console.error('[Session] Failed to update episode:', err);
+      });
     }
     setEditingEpisode(false);
-  }, [dispatch]);
+  }, [dispatch, sessionId]);
 
   const startEpisodeEdit = useCallback(() => {
     setEpisodeInput(episodeName);
@@ -98,9 +104,7 @@ export function DashboardHeader() {
     }, 0);
   }, [hostName]);
 
-  const { channel: existingChannel } = usePresence();
-
-  // Pusher recording sync
+  // Realtime recording sync
   const recordingStartRef = useRef<number>(0);
 
   const handleRemoteStart = useCallback(async (startedAt: number) => {
@@ -130,11 +134,8 @@ export function DashboardHeader() {
 
   const { broadcastStart, broadcastStop } = useRecordingSync({
     sessionId,
-    channelName,
-    hostName,
     onRemoteStart: handleRemoteStart,
     onRemoteStop: handleRemoteStop,
-    existingChannel,
   });
 
   const uploadTrack = useCallback(async (

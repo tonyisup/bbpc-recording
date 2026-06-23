@@ -11,153 +11,14 @@ import {
   useId,
 } from 'react';
 import { useSessionSync } from '@/hooks/useSessionSync';
-import { usePresence } from './PresenceProvider';
-import type { SessionState, SessionAction, Manifest, Sounder, PusherEvent } from '@/types';
-
-// ---------------------------------------------------------------------------
-// Reducer
-// ---------------------------------------------------------------------------
-
-function sessionReducer(state: SessionState, action: SessionAction): SessionState {
-  switch (action.type) {
-    case 'START_RECORDING':
-      return { ...state, isRecording: true, recordingStart: Date.now() };
-
-    case 'STOP_RECORDING':
-      return { ...state, isRecording: false };
-
-    case 'TRIGGER_SOUNDER': {
-      const playedAt = state.recordingStart != null ? Date.now() - state.recordingStart : 0;
-      return {
-        ...state,
-        soundersUsed: [
-          ...state.soundersUsed,
-          { id: action.sounder.id, name: action.sounder.name, played_at_ms: playedAt, played_by: state.hostName },
-        ],
-      };
-    }
-
-    case 'ADD_NOTE':
-      return { ...state, notes: [...state.notes, action.note] };
-
-    case 'DELETE_NOTE':
-      return { ...state, notes: state.notes.filter(n => n.id !== action.id) };
-
-    case 'START_SEGMENT':
-      return { ...state, segments: [...state.segments, action.segment] };
-
-    case 'END_SEGMENT':
-      return { ...state, segments: state.segments.map(seg => seg.id === action.id ? { ...seg, end_ms: action.end_ms } : seg) };
-
-    case 'ADD_EDIT_CUE':
-      return { ...state, editCues: [...state.editCues, action.cue] };
-
-    case 'UPDATE_EDIT_CUE':
-      return { ...state, editCues: state.editCues.map(cue => cue.id === action.id ? { ...cue, end_ms: action.end_ms } : cue) };
-
-    case 'DELETE_EDIT_CUE':
-      return { ...state, editCues: state.editCues.filter(c => c.id !== action.id) };
-
-    case 'DELETE_SEGMENT':
-      return { ...state, segments: state.segments.filter(seg => seg.id !== action.id) };
-
-    case 'UPDATE_EPISODE':
-      return { ...state, episode: action.episode };
-
-    case 'UPDATE_HOST_NAME':
-      return { ...state, hostName: action.hostName };
-
-    case 'RESET':
-      return { ...createInitialState(state.episode, state.date, state.hostName, state.sounders) };
-
-    default:
-      return state;
-  }
-}
-
-function createInitialState(episode: string, date: string, hostName: string, sounders: Sounder[] = []): SessionState {
-  return {
-    episode,
-    date,
-    hostName,
-    recordingStart: null,
-    isRecording: false,
-    sounders,
-    soundersUsed: [],
-    notes: [],
-    segments: [],
-    editCues: [],
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Action → Pusher event mapping
-// ---------------------------------------------------------------------------
-
-function actionToPusherEvent(
-  action: SessionAction,
-  hostName: string,
-  recordingStart: number | null,
-  sessionId: string,
-): PusherEvent | null {
-  switch (action.type) {
-    case 'TRIGGER_SOUNDER': {
-      const playedAt = recordingStart != null ? Date.now() - recordingStart : 0;
-      return { kind: 'sounder', sounder: action.sounder, played_at_ms: playedAt, played_by: hostName, from: sessionId };
-    }
-    case 'ADD_NOTE':
-      return { kind: 'note', note: action.note, from: sessionId };
-    case 'DELETE_NOTE':
-      return { kind: 'note-delete', id: action.id, from: sessionId };
-    case 'START_SEGMENT':
-      return { kind: 'segment-start', segment: action.segment, from: sessionId };
-    case 'END_SEGMENT':
-      return { kind: 'segment-end', id: action.id, end_ms: action.end_ms, from: sessionId };
-    case 'DELETE_SEGMENT':
-      return { kind: 'segment-delete', id: action.id, from: sessionId };
-    case 'UPDATE_EPISODE':
-      return { kind: 'episode-update', episode: action.episode, from: sessionId };
-    case 'ADD_EDIT_CUE':
-      return { kind: 'edit-cue', cue: action.cue, from: sessionId };
-    case 'UPDATE_EDIT_CUE':
-      return { kind: 'edit-cue-update', id: action.id, end_ms: action.end_ms, from: sessionId };
-    case 'DELETE_EDIT_CUE':
-      return { kind: 'edit-cue-delete', id: action.id, from: sessionId };
-    default:
-      return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Pusher event → Action mapping
-// ---------------------------------------------------------------------------
-
-function pusherEventToAction(event: PusherEvent): SessionAction | null {
-  switch (event.kind) {
-    case 'sounder':
-      return { type: 'TRIGGER_SOUNDER', sounder: event.sounder };
-    case 'note':
-      return { type: 'ADD_NOTE', note: event.note };
-    case 'note-delete':
-      return { type: 'DELETE_NOTE', id: event.id };
-    case 'segment-start':
-      return { type: 'START_SEGMENT', segment: event.segment };
-    case 'segment-end':
-      return { type: 'END_SEGMENT', id: event.id, end_ms: event.end_ms };
-    case 'segment-delete':
-      return { type: 'DELETE_SEGMENT', id: event.id };
-    case 'episode-update':
-      return { type: 'UPDATE_EPISODE', episode: event.episode };
-    case 'edit-cue':
-      return { type: 'ADD_EDIT_CUE', cue: event.cue };
-    case 'edit-cue-update':
-      return { type: 'UPDATE_EDIT_CUE', id: event.id, end_ms: event.end_ms };
-    case 'edit-cue-delete':
-      return { type: 'DELETE_EDIT_CUE', id: event.id };
-    default:
-      return null;
-  }
-}
+import type { SessionState, SessionAction, Manifest, Sounder, SessionSyncEvent } from '@/types';
+import {
+  actionToSyncEvent,
+  createInitialState,
+  sessionReducer,
+  sessionStateToManifest,
+  syncEventToAction,
+} from '@/lib/session-state';
 
 // ---------------------------------------------------------------------------
 // Context
@@ -170,7 +31,6 @@ interface SessionContextValue {
   toManifest: () => Manifest;
   sessionId: string;
   inviteUrl: string;
-  channelName: string;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -182,7 +42,6 @@ interface SessionProviderProps {
   episode?: string;
   date?: string;
   hostName?: string;
-  channelName?: string;
   sounders?: Sounder[];
 }
 
@@ -197,12 +56,8 @@ export function SessionProvider({
   episode = 'EP-NEW',
   date = new Date().toISOString().slice(0, 10),
   hostName = 'host',
-  channelName,
   sounders = [],
 }: SessionProviderProps) {
-  // Get the shared Pusher channel from PresenceProvider
-  const { channel: existingChannel } = usePresence();
-
   const [state, rawDispatch] = useReducer(
     sessionReducer,
     null,
@@ -226,49 +81,34 @@ export function SessionProvider({
     return () => cancelAnimationFrame(rafRef.current);
   }, [state.isRecording, state.recordingStart]);
 
-  // Pusher sync — use the session-scoped channel, never the editable episode title.
-  const channel = channelName ?? episode.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-
   const reactId = useId();
   const sessionIdRef = useRef(`sess-${reactId}`);
 
-  const handleRemoteEvent = useCallback((event: PusherEvent) => {
+  const handleRemoteEvent = useCallback((event: SessionSyncEvent) => {
     if (event.from === sessionIdRef.current) return;
-    const action = pusherEventToAction(event);
+    const action = syncEventToAction(event);
     if (action) rawDispatch(action);
   }, []);
 
   const { sendEvent } = useSessionSync({
     sessionId,
-    channelName: channel,
-    hostName: state.hostName,
     onRemoteEvent: handleRemoteEvent,
-    existingChannel,
   });
 
   // Wrapped dispatch: local + broadcast
   const dispatch = useCallback((action: SessionAction) => {
     rawDispatch(action);
-    const event = actionToPusherEvent(action, state.hostName, state.recordingStart, sessionIdRef.current);
+    const event = actionToSyncEvent(action, state.hostName, state.recordingStart, sessionIdRef.current);
     if (event) sendEvent(event);
   }, [rawDispatch, sendEvent, state.hostName, state.recordingStart]);
 
-  const toManifest = useCallback((): Manifest => ({
-    episode: state.episode,
-    date: state.date,
-    hosts: [state.hostName],
-    session_id: sessionId,
-    recording_start: state.recordingStart,
-    recording_end: state.isRecording ? null : (state.recordingStart ?? 0) + elapsedMs,
-    manifest_version: '1.0',
-    sounders_used: state.soundersUsed,
-    notes: state.notes,
-    segments: state.segments,
-    edit_cues: state.editCues,
-  }), [state, elapsedMs, sessionId]);
+  const toManifest = useCallback(
+    (): Manifest => sessionStateToManifest(state, sessionId, elapsedMs),
+    [state, elapsedMs, sessionId],
+  );
 
   return (
-    <SessionContext.Provider value={{ state, dispatch, elapsedMs, toManifest, sessionId, inviteUrl, channelName: channel }}>
+    <SessionContext.Provider value={{ state, dispatch, elapsedMs, toManifest, sessionId, inviteUrl }}>
       {children}
     </SessionContext.Provider>
   );

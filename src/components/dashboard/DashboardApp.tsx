@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ConvexClientProvider } from '@/components/ConvexClientProvider';
 import { SessionProvider } from '@/components/SessionProvider';
 import { AudioProvider } from '@/components/AudioProvider';
 import { PresenceProvider } from '@/components/PresenceProvider';
@@ -12,7 +13,6 @@ import { EditCuePanel } from '@/components/EditCuePanel';
 import { SegmentPanel } from '@/components/SegmentPanel';
 import { ExportBar } from '@/components/ExportBar';
 import { useSession } from '@/components/SessionProvider';
-import { toSessionChannelName } from '@/lib/sessions/channel';
 
 type Tab = 'sounders' | 'notes' | 'edit' | 'segments';
 
@@ -76,22 +76,21 @@ function DashboardContent() {
 }
 
 export function DashboardApp({ sessionId, inviteUrl, episode, date, hostName }: DashboardAppProps) {
-  const channelName = toSessionChannelName(sessionId);
-
   return (
-    <PresenceProvider channelName={channelName} hostName={hostName}>
-      <SessionProvider
-        sessionId={sessionId}
-        inviteUrl={inviteUrl}
-        episode={episode}
-        date={date}
-        hostName={hostName}
-        channelName={channelName}
-      >
-        <AudioProvider>
-          <DashboardContent />
-        </AudioProvider>
-      </SessionProvider>
-    </PresenceProvider>
+    <ConvexClientProvider>
+      <PresenceProvider sessionId={sessionId}>
+        <SessionProvider
+          sessionId={sessionId}
+          inviteUrl={inviteUrl}
+          episode={episode}
+          date={date}
+          hostName={hostName}
+        >
+          <AudioProvider>
+            <DashboardContent />
+          </AudioProvider>
+        </SessionProvider>
+      </PresenceProvider>
+    </ConvexClientProvider>
   );
 }

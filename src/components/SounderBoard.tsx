@@ -25,7 +25,6 @@ export function SounderBoard() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     fetch('/api/sounders/list')
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -96,7 +95,7 @@ export function SounderBoard() {
         url: sounder.url,
       },
     });
-  }, [dispatch]);
+  }, [dispatch, play]);
 
   if (loading) {
     return (
@@ -158,7 +157,7 @@ export function SounderBoard() {
       <div className="flex-1 overflow-y-auto p-3">
         {filteredSounders.length === 0 && (
           <div className="text-center py-8 text-sm text-[var(--muted)]">
-            No sounders match "{search}"
+            No sounders match &quot;{search}&quot;
           </div>
         )}
 

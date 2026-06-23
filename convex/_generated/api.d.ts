@@ -8,7 +8,12 @@
  * @module
  */
 
+import type * as favorites from "../favorites.js";
+import type * as manifests from "../manifests.js";
+import type * as recordings from "../recordings.js";
+import type * as segmentTemplates from "../segmentTemplates.js";
 import type * as sessions from "../sessions.js";
+import type * as sounders from "../sounders.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +22,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  favorites: typeof favorites;
+  manifests: typeof manifests;
+  recordings: typeof recordings;
+  segmentTemplates: typeof segmentTemplates;
   sessions: typeof sessions;
+  sounders: typeof sounders;
 }>;
 
 /**

@@ -125,3 +125,17 @@ export async function updateParticipantDisplayName(
   });
 }
 
+export async function updateSessionEpisode(
+  sessionId: string,
+  grant: SessionAccessGrant | undefined,
+  episode: string,
+): Promise<{ id: string; episode: string } | null> {
+  const canAccess = await hasSessionAccess(sessionId, grant);
+  if (!canAccess) return null;
+
+  return await fetchMutation(api.sessions.updateSessionEpisode, {
+    publicId: sessionId,
+    episode: episode.trim().slice(0, 80),
+  });
+}
+

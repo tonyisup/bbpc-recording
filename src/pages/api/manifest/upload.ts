@@ -1,14 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { BlobServiceClient } from '@azure/storage-blob';
 import type { Manifest } from '@/types';
-
-const CONTAINER_NAME = 'manifests';
-
-function getBlobServiceClient() {
-  const connStr = process.env.AZURE_STORAGE_ACCOUNT_CONNECTION_STRING;
-  if (!connStr) throw new Error('AZURE_STORAGE_ACCOUNT_CONNECTION_STRING not set');
-  return BlobServiceClient.fromConnectionString(connStr);
-}
+import { readSessionGrantsFromRequest } from '@/lib/sessions/cookies';
+import { hasSessionAccess } from '@/lib/sessions/store';
+import { saveManifest } from '@/lib/manifests/store';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -17,38 +11,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const manifest = req.body as Manifest;
 
-  if (!manifest || !manifest.episode) {
-    return res.status(400).json({ message: 'Missing manifest or episode' });
+  if (!manifest?.session_id || !manifest.episode) {
+    return res.status(400).json({ message: 'Missing manifest session_id or episode' });
+  }
+
+  const grants = readSessionGrantsFromRequest(req);
+  const grant = grants.find(candidate => candidate.sessionId === manifest.session_id);
+  const canAccess = await hasSessionAccess(manifest.session_id, grant);
+
+  if (!canAccess) {
+    return res.status(403).json({ message: 'Session access denied' });
   }
 
   try {
-    const blobServiceClient = getBlobServiceClient();
-    const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
-
-    // Create container if it doesn't exist
-    await containerClient.createIfNotExists({ access: 'blob' });
-
-    const blobName = `${manifest.session_id || manifest.episode}/session-manifest.json`;
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-
-    const json = JSON.stringify(manifest, null, 2);
-    await blockBlobClient.upload(json, Buffer.byteLength(json), {
-      blobHTTPHeaders: { blobContentType: 'application/json' },
-      metadata: {
-        episode: manifest.episode,
-        sessionId: manifest.session_id || '',
-        date: manifest.date,
-        hosts: manifest.hosts.join(','),
-      },
-    });
-
+    const id = await saveManifest(manifest);
     res.status(200).json({
       ok: true,
-      url: blockBlobClient.url,
-      blobName,
+      id,
+      storage: 'convex',
     });
   } catch (err) {
-    console.error('[Azure] Upload error:', err);
-    res.status(500).json({ message: 'Upload failed' });
+    console.error('[Manifest] Save error:', err);
+    res.status(500).json({ message: 'Manifest save failed' });
   }
 }

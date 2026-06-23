@@ -1,32 +1,22 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useMutation, useQuery } from 'convex/react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
 import { usePresence } from './PresenceProvider';
 import type { Sounder as SounderItem } from '@/types';
+import { api } from '../../convex/_generated/api';
 
-const STORAGE_KEY = 'bbpc-sounders-favorites';
-
-function loadFavorites(): SounderItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveFavorites(favs: SounderItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(favs));
-}
+const EMPTY_FAVORITES: SounderItem[] = [];
 
 export function FavoritesSidebar() {
-  const { state, dispatch } = useSession();
+  const { dispatch, sessionId } = useSession();
   const { play } = useAudio();
   const { members, connected, resetConnections } = usePresence();
-  const [favorites, setFavorites] = useState<SounderItem[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const savedFavorites = useQuery(api.favorites.list, { publicSessionId: sessionId });
+  const replaceFavorites = useMutation(api.favorites.replaceAll);
+  const [optimisticFavorites, setOptimisticFavorites] = useState<SounderItem[] | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -35,18 +25,30 @@ export function FavoritesSidebar() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const saveSequenceRef = useRef(0);
+  const favorites = optimisticFavorites ?? savedFavorites ?? EMPTY_FAVORITES;
 
-  // Load from localStorage after mount (SSR-safe)
-  useEffect(() => {
-    setFavorites(loadFavorites());
-    setHydrated(true);
-  }, []);
+  const saveFavorites = useCallback((next: SounderItem[]) => {
+    const saveSequence = saveSequenceRef.current + 1;
+    saveSequenceRef.current = saveSequence;
+    void replaceFavorites({
+      publicSessionId: sessionId,
+      favorites: next,
+      updatedAt: Date.now(),
+    }).then(() => {
+      if (saveSequenceRef.current === saveSequence) {
+        setOptimisticFavorites(null);
+      }
+    }).catch(err => {
+      console.error('[Favorites] Failed to save favorites:', err);
+    });
+  }, [replaceFavorites, sessionId]);
 
-  // Persist on change (skip initial empty state before hydration)
-  useEffect(() => {
-    if (!hydrated) return;
-    saveFavorites(favorites);
-  }, [favorites, hydrated]);
+  const updateFavorites = useCallback((updater: (current: SounderItem[]) => SounderItem[]) => {
+    const next = updater(favorites);
+    setOptimisticFavorites(next);
+    saveFavorites(next);
+  }, [favorites, saveFavorites]);
 
   // Focus rename input when entering rename mode
   useEffect(() => {
@@ -67,10 +69,12 @@ export function FavoritesSidebar() {
 
   // --- Remove ---
   const handleRemove = useCallback((id: string) => {
-    setFavorites(prev => prev.filter(f => f.id !== id));
-  }, []);
+    updateFavorites(prev => prev.filter(f => f.id !== id));
+  }, [updateFavorites]);
 
-  const handleClear = useCallback(() => { setFavorites([]); }, []);
+  const handleClear = useCallback(() => {
+    updateFavorites(() => []);
+  }, [updateFavorites]);
 
   // --- Rename ---
   const startRename = useCallback((s: SounderItem) => {
@@ -82,11 +86,11 @@ export function FavoritesSidebar() {
     if (!renamingId) return;
     const trimmed = renameText.trim();
     if (trimmed) {
-      setFavorites(prev => prev.map(f => f.id === renamingId ? { ...f, name: trimmed } : f));
+      updateFavorites(prev => prev.map(f => f.id === renamingId ? { ...f, name: trimmed } : f));
     }
     setRenamingId(null);
     setRenameText('');
-  }, [renamingId, renameText]);
+  }, [renamingId, renameText, updateFavorites]);
 
   const cancelRename = useCallback(() => {
     setRenamingId(null);
@@ -113,7 +117,7 @@ export function FavoritesSidebar() {
     e.preventDefault();
     const sourceIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
     if (isNaN(sourceIdx) || sourceIdx === targetIdx) return;
-    setFavorites(prev => {
+    updateFavorites(prev => {
       const next = [...prev];
       const [moved] = next.splice(sourceIdx, 1);
       next.splice(targetIdx > sourceIdx ? targetIdx - 1 : targetIdx, 0, moved);
@@ -121,7 +125,7 @@ export function FavoritesSidebar() {
     });
     setDragIdx(null);
     setDropIdx(null);
-  }, []);
+  }, [updateFavorites]);
 
   const handleDragEnd = useCallback(() => {
     setDragIdx(null);
@@ -143,12 +147,12 @@ export function FavoritesSidebar() {
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json')) as SounderItem;
       if (!data?.id) return;
-      setFavorites(prev => {
+      updateFavorites(prev => {
         if (prev.some(f => f.id === data.id)) return prev;
         return [...prev, data];
       });
     } catch { /* ignore */ }
-  }, []);
+  }, [updateFavorites]);
 
   return (
     <div
@@ -312,7 +316,7 @@ export function FavoritesSidebar() {
           <div className="flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
             <span>Channel:</span>
             <code className="text-[var(--accent)] bg-[var(--card-bg)] px-1 rounded">
-              presence-{state.episode.toLowerCase().replace(/[^a-z0-9-]/g, '-')}
+              {sessionId}
             </code>
           </div>
         </div>

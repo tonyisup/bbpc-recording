@@ -32,6 +32,15 @@ export interface Segment {
   label: string;
 }
 
+export interface SegmentTemplate {
+  id: string;
+  label: string;
+  type: Segment['type'];
+  introSounder?: string;
+  outroSounder?: string;
+  sortOrder?: number;
+}
+
 export interface Manifest {
   session_id?: string;
   episode: string;
@@ -64,7 +73,7 @@ export interface SessionState {
 export type SessionAction =
   | { type: 'START_RECORDING' }
   | { type: 'STOP_RECORDING' }
-  | { type: 'TRIGGER_SOUNDER'; sounder: Sounder }
+  | { type: 'TRIGGER_SOUNDER'; sounder: Sounder; played_at_ms?: number; played_by?: string }
   | { type: 'ADD_NOTE'; note: SessionNote }
   | { type: 'DELETE_NOTE'; id: string }
   | { type: 'START_SEGMENT'; segment: Segment }
@@ -77,9 +86,9 @@ export type SessionAction =
   | { type: 'UPDATE_HOST_NAME'; hostName: string }
   | { type: 'RESET' }
 
-// --- Pusher Event Types ---
+// --- Realtime Session Event Types ---
 
-export interface PusherSounderEvent {
+export interface SessionSyncSounderEvent {
   kind: 'sounder';
   sounder: Sounder;
   played_at_ms: number;
@@ -87,90 +96,90 @@ export interface PusherSounderEvent {
   from?: string;
 }
 
-export interface PusherNoteEvent {
+export interface SessionSyncNoteEvent {
   kind: 'note';
   note: SessionNote;
   from?: string;
 }
 
-export interface PusherNoteDeleteEvent {
+export interface SessionSyncNoteDeleteEvent {
   kind: 'note-delete';
   id: string;
   from?: string;
 }
 
-export interface PusherSegmentStartEvent {
+export interface SessionSyncSegmentStartEvent {
   kind: 'segment-start';
   segment: Segment;
   from?: string;
 }
 
-export interface PusherSegmentEndEvent {
+export interface SessionSyncSegmentEndEvent {
   kind: 'segment-end';
   id: string;
   end_ms: number;
   from?: string;
 }
 
-export interface PusherEditCueEvent {
+export interface SessionSyncEditCueEvent {
   kind: 'edit-cue';
   cue: EditCue;
   from?: string;
 }
 
-export interface PusherEditCueUpdateEvent {
+export interface SessionSyncEditCueUpdateEvent {
   kind: 'edit-cue-update';
   id: string;
   end_ms: number;
   from?: string;
 }
 
-export interface PusherEditCueDeleteEvent {
+export interface SessionSyncEditCueDeleteEvent {
   kind: 'edit-cue-delete';
   id: string;
   from?: string;
 }
 
-export interface PusherSegmentDeleteEvent {
+export interface SessionSyncSegmentDeleteEvent {
   kind: 'segment-delete';
   id: string;
   from?: string;
 }
 
-export interface PusherRecordingStartEvent {
+export interface SessionSyncRecordingStartEvent {
   kind: 'recording-started';
   startedAt: number;
   from?: string;
 }
 
-export interface PusherRecordingStopEvent {
+export interface SessionSyncRecordingStopEvent {
   kind: 'recording-stopped';
   startedAt: number;
   durationMs: number;
   from?: string;
 }
 
-export interface PusherEpisodeUpdateEvent {
+export interface SessionSyncEpisodeUpdateEvent {
   kind: 'episode-update';
   episode: string;
   from?: string;
 }
 
-// All Pusher events that affect session state
-export type PusherSessionEvent =
-  | PusherSounderEvent
-  | PusherNoteEvent
-  | PusherNoteDeleteEvent
-  | PusherSegmentStartEvent
-  | PusherSegmentEndEvent
-  | PusherSegmentDeleteEvent
-  | PusherEpisodeUpdateEvent
-  | PusherEditCueEvent
-  | PusherEditCueUpdateEvent
-  | PusherEditCueDeleteEvent;
+// All events that affect session state
+export type SessionSyncStateEvent =
+  | SessionSyncSounderEvent
+  | SessionSyncNoteEvent
+  | SessionSyncNoteDeleteEvent
+  | SessionSyncSegmentStartEvent
+  | SessionSyncSegmentEndEvent
+  | SessionSyncSegmentDeleteEvent
+  | SessionSyncEpisodeUpdateEvent
+  | SessionSyncEditCueEvent
+  | SessionSyncEditCueUpdateEvent
+  | SessionSyncEditCueDeleteEvent;
 
-// All Pusher events (session + recording sync)
-export type PusherEvent =
-  | PusherSessionEvent
-  | PusherRecordingStartEvent
-  | PusherRecordingStopEvent;
+// All realtime events (session + recording sync)
+export type SessionSyncEvent =
+  | SessionSyncStateEvent
+  | SessionSyncRecordingStartEvent
+  | SessionSyncRecordingStopEvent;

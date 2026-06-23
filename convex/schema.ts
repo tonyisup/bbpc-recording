@@ -29,5 +29,87 @@ export default defineSchema({
   })
     .index('by_public_session_id', ['publicSessionId'])
     .index('by_access', ['publicSessionId', 'clientId', 'accessToken']),
-});
 
+  sessionEvents: defineTable({
+    publicSessionId: v.string(),
+    eventId: v.string(),
+    actorId: v.string(),
+    createdAt: v.number(),
+    payload: v.any(),
+  })
+    .index('by_public_session_id', ['publicSessionId'])
+    .index('by_event_id', ['eventId']),
+
+  segmentTemplates: defineTable({
+    templateId: v.string(),
+    label: v.string(),
+    type: v.union(
+      v.literal('intro'),
+      v.literal('segment'),
+      v.literal('ad'),
+      v.literal('outro'),
+      v.literal('news'),
+      v.literal('interview'),
+    ),
+    introSounder: v.optional(v.string()),
+    outroSounder: v.optional(v.string()),
+    sortOrder: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_template_id', ['templateId'])
+    .index('by_sort_order', ['sortOrder']),
+
+  sessionManifests: defineTable({
+    publicSessionId: v.string(),
+    episode: v.string(),
+    date: v.string(),
+    hosts: v.array(v.string()),
+    manifestVersion: v.string(),
+    manifest: v.any(),
+    updatedAt: v.number(),
+  }).index('by_public_session_id', ['publicSessionId']),
+
+  sessionFavorites: defineTable({
+    publicSessionId: v.string(),
+    sounderId: v.string(),
+    name: v.string(),
+    category: v.string(),
+    duration: v.number(),
+    url: v.string(),
+    sortOrder: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_public_session_id', ['publicSessionId'])
+    .index('by_sounder', ['publicSessionId', 'sounderId']),
+
+  sounders: defineTable({
+    sounderId: v.string(),
+    blobName: v.string(),
+    name: v.string(),
+    category: v.string(),
+    url: v.string(),
+    duration: v.number(),
+    size: v.number(),
+    contentType: v.string(),
+    sortOrder: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_sounder_id', ['sounderId'])
+    .index('by_category', ['category', 'name']),
+
+  recordingUploads: defineTable({
+    publicSessionId: v.optional(v.string()),
+    episode: v.string(),
+    hostName: v.string(),
+    trackType: v.union(v.literal('mic'), v.literal('sounders')),
+    startedAt: v.number(),
+    blobName: v.string(),
+    url: v.string(),
+    size: v.number(),
+    contentType: v.string(),
+    uploadedAt: v.number(),
+  })
+    .index('by_public_session_id', ['publicSessionId'])
+    .index('by_episode', ['episode'])
+    .index('by_blob_name', ['blobName']),
+});

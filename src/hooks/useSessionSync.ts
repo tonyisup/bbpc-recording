@@ -1,28 +1,43 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
-import Pusher from 'pusher-js';
-import type { PusherEvent } from '@/types';
+import { useCallback, useEffect, useRef } from 'react';
+import { useMutation, useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
+import type { SessionSyncEvent } from '@/types';
 
 interface UseSessionSyncOptions {
   sessionId: string;
-  channelName: string;
-  hostName: string;
-  onRemoteEvent: (event: PusherEvent) => void;
-  existingChannel?: ReturnType<Pusher['subscribe']> | null;
+  onRemoteEvent: (event: SessionSyncEvent) => void;
+}
+
+function createEventId(sessionId: string, from: string | undefined): string {
+  const randomPart = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  return `${sessionId}:${from ?? 'client'}:${Date.now()}:${randomPart}`;
+}
+
+function removeUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(removeUndefined);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, removeUndefined(entry)]),
+    );
+  }
+
+  return value;
 }
 
 /**
- * Subscribe to a Pusher presence channel for real-time session sync.
- *
- * If `existingChannel` is provided (from PresenceProvider), reuses that connection
- * instead of creating a new one. This prevents duplicate presence entries.
- *
- * Events are relayed through /api/pusher/signal (server-side trigger).
+ * Subscribe to and publish session events through Convex.
  */
-export function useSessionSync({ sessionId, channelName, hostName, onRemoteEvent, existingChannel }: UseSessionSyncOptions) {
-  const pusherRef = useRef<Pusher | null>(null);
-  const channelRef = useRef<ReturnType<Pusher['subscribe']> | null>(null);
+export function useSessionSync({ sessionId, onRemoteEvent }: UseSessionSyncOptions) {
+  const events = useQuery(api.sessions.listSessionEvents, { publicId: sessionId });
+  const appendEvent = useMutation(api.sessions.appendSessionEvent);
+  const processedEventIdsRef = useRef<Set<string>>(new Set());
   const onRemoteRef = useRef(onRemoteEvent);
 
   useEffect(() => {
@@ -30,69 +45,28 @@ export function useSessionSync({ sessionId, channelName, hostName, onRemoteEvent
   }, [onRemoteEvent]);
 
   useEffect(() => {
-    // If we already have a channel from PresenceProvider, just bind to it
-    if (existingChannel) {
-      channelRef.current = existingChannel;
-      existingChannel.bind('session-event', (data: PusherEvent) => {
-        onRemoteRef.current(data);
-      });
-      return () => {
-        existingChannel.unbind('session-event');
-      };
+    if (!events) return;
+
+    for (const event of events) {
+      if (processedEventIdsRef.current.has(event.eventId)) continue;
+      processedEventIdsRef.current.add(event.eventId);
+      onRemoteRef.current(event.payload as SessionSyncEvent);
     }
+  }, [events]);
 
-    // Otherwise create our own Pusher connection
-    const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
-    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
-
-    if (!key || !cluster) {
-      console.warn('[Pusher] Env vars missing — running in local-only mode');
-      return;
-    }
-
-    console.log('[Pusher] Creating own connection for', channelName);
-    const pusher = new Pusher(key, {
-      cluster,
-      authEndpoint: '/api/pusher/auth',
-      auth: { params: { username: hostName } },
-    });
-    pusherRef.current = pusher;
-
-    const channel = pusher.subscribe(`presence-${channelName}`);
-    channelRef.current = channel;
-
-    channel.bind('session-event', (data: PusherEvent) => {
-      onRemoteRef.current(data);
-    });
-
-    channel.bind('pusher:subscription_succeeded', () => {
-      console.log(`[Pusher] Subscribed to presence-${channelName}`);
-    });
-
-    channel.bind('pusher:subscription_error', (err: unknown) => {
-      console.error('[Pusher] Subscription error:', err);
-    });
-
-    return () => {
-      console.log('[Pusher] Cleaning up own connection for', channelName);
-      channel.unbind_all();
-      pusher.unsubscribe(`presence-${channelName}`);
-      pusher.disconnect();
-      pusherRef.current = null;
-    };
-  }, [channelName, hostName, existingChannel]);
-
-  const sendEvent = useCallback(async (event: PusherEvent) => {
+  const sendEvent = useCallback(async (event: SessionSyncEvent) => {
     try {
-      await fetch('/api/pusher/signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, event }),
+      await appendEvent({
+        publicId: sessionId,
+        eventId: createEventId(sessionId, event.from),
+        actorId: event.from ?? 'unknown',
+        createdAt: Date.now(),
+        payload: removeUndefined(event),
       });
     } catch (err) {
-      console.error('[Pusher] Failed to send event:', err);
+      console.error('[Convex] Failed to append session event:', err);
     }
-  }, [sessionId]);
+  }, [appendEvent, sessionId]);
 
   return { sendEvent };
 }

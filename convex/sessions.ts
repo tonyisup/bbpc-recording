@@ -208,3 +208,87 @@ export const updateParticipantDisplayName = mutation({
     };
   },
 });
+
+export const updateSessionEpisode = mutation({
+  args: {
+    publicId: v.string(),
+    episode: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await sessionByPublicId(ctx, args.publicId);
+    if (!session) return null;
+
+    await ctx.db.patch(session._id, { episode: args.episode });
+
+    return {
+      id: session.publicId,
+      episode: args.episode,
+      status: session.status,
+      createdAt: new Date(session.createdAt).toISOString(),
+    };
+  },
+});
+
+export const listParticipants = query({
+  args: {
+    publicId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const participants = await ctx.db
+      .query('participants')
+      .withIndex('by_public_session_id', q => q.eq('publicSessionId', args.publicId))
+      .collect();
+
+    return participants.map(participant => ({
+      id: participant.clientId,
+      name: participant.displayName,
+    }));
+  },
+});
+
+export const appendSessionEvent = mutation({
+  args: {
+    publicId: v.string(),
+    eventId: v.string(),
+    actorId: v.string(),
+    createdAt: v.number(),
+    payload: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query('sessionEvents')
+      .withIndex('by_event_id', q => q.eq('eventId', args.eventId))
+      .unique();
+
+    if (existing) return existing._id;
+
+    return await ctx.db.insert('sessionEvents', {
+      publicSessionId: args.publicId,
+      eventId: args.eventId,
+      actorId: args.actorId,
+      createdAt: args.createdAt,
+      payload: args.payload,
+    });
+  },
+});
+
+export const listSessionEvents = query({
+  args: {
+    publicId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const events = await ctx.db
+      .query('sessionEvents')
+      .withIndex('by_public_session_id', q => q.eq('publicSessionId', args.publicId))
+      .collect();
+
+    return events
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map(event => ({
+        eventId: event.eventId,
+        actorId: event.actorId,
+        createdAt: event.createdAt,
+        payload: event.payload,
+      }));
+  },
+});

@@ -4,14 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from './SessionProvider';
 import { useAudio } from './AudioProvider';
 import { useUniqueId } from '@/hooks/useUniqueId';
-
-interface SegmentTemplate {
-  id: string;
-  label: string;
-  type: 'intro' | 'segment' | 'ad' | 'outro' | 'news' | 'interview';
-  introSounder?: string;
-  outroSounder?: string;
-}
+import type { SegmentTemplate } from '@/types';
 
 const SEGMENT_TYPES = [
   { value: 'intro', label: 'Intro' },
@@ -32,7 +25,7 @@ export function SegmentPanel() {
   const newId = useUniqueId('seg');
   const { play } = useAudio();
 
-  // Load templates from Azure config
+  // Load templates from Convex via the server API.
   useEffect(() => {
     let cancelled = false;
     fetch('/api/segment-templates/list')
